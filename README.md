@@ -125,6 +125,46 @@ streamlit run dashboard.py
 
 ---
 
+## AI Dataset Assistant
+
+The assistant turns the dashboard into a small AutoML workflow for tabular CSV files. It is designed to stay grounded in computed results instead of guessing.
+
+It can:
+
+- upload and preview a CSV dataset
+- profile rows, columns, missing values, data types and duplicate rows
+- suggest likely target columns and infer classification vs regression
+- suggest usable feature columns and explain weak or excluded columns
+- rank features with mutual information
+- recommend a compact feature set to compare against all selected features
+- train classification and regression baselines including linear models, KNN, SVM/SVR, random forest, gradient boosting, neural networks and XGBoost
+- compare cross-validation results against holdout-test results
+- generate a short dataset report
+- answer dataset questions about missing values, feature importance, model quality, task type, overfitting and possible leakage
+
+The assistant also has an optional local LLM explanation layer. If Ollama is running, you can enable the local LLM toggle in the app and use a model such as `llama3.1` to turn the computed statistics into a more natural streamed answer. If Ollama is not running, the app falls back to the deterministic built-in answer, so the dashboard still works without any LLM dependency.
+
+Example local LLM setup:
+
+```bash
+ollama pull llama3.1
+ollama run llama3.1
+streamlit run dashboard.py
+```
+
+This branch is stable enough to merge when these checks pass:
+
+```bash
+python -m pip check
+pytest -q
+python -m compileall src tests dashboard.py
+streamlit run dashboard.py
+```
+
+Future improvements should be added on separate branches, especially larger features such as chat history, PyTorch deep learning models, clustering workflows or richer LLM agents.
+
+---
+
 ## Setup
 
 ```bash

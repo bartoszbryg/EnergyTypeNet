@@ -220,6 +220,17 @@ def prepare_dataset(
         encoder = LabelEncoder()
         y = encoder.fit_transform(data[target_col].astype(str))
         classes = [str(cls) for cls in encoder.classes_]
+        _, class_counts = np.unique(y, return_counts=True)
+
+        if len(classes) < 2:
+            raise ValueError('Classification requires at least two target classes.')
+
+        if int(class_counts.min()) < 2:
+            raise ValueError(
+                f'Classification target `{target_col}` has at least one class with '
+                'only one row. Choose regression for continuous numeric targets, or '
+                'choose a categorical target with repeated class examples.'
+            )
     elif task_type == 'regression':
         if not pd.api.types.is_numeric_dtype(data[target_col]):
             raise ValueError(
@@ -549,6 +560,63 @@ def answer_dataset_question(
     """Answer common dataset questions from computed statistics only."""
     q = question.lower()
 
+    if any(word in q for word in ['overfit', 'overfitting', 'generalize', 'generalization', 'leakage', 'leak']):
+        if results is None or results.empty:
+            return (
+                'Train baseline models first so I can compare cross-validation and '
+                'test performance. Overfitting is measured from that gap, not guessed.'
+            )
+
+        if prepared and prepared.task_type == 'classification':
+            best = results.iloc[0]
+            cv_score = float(best['cv_accuracy'])
+            test_score = float(best['test_accuracy'])
+            gap = cv_score - test_score
+            score_text = (
+                f"The best model is {best['model']} with CV accuracy "
+                f"{cv_score:.3f} and test accuracy {test_score:.3f}."
+            )
+        else:
+            best = results.iloc[0]
+            cv_score = float(best['cv_r2'])
+            test_score = float(best['test_r2'])
+            gap = cv_score - test_score
+            score_text = (
+                f"The best model is {best['model']} with CV R2 "
+                f"{cv_score:.3f} and test R2 {test_score:.3f}."
+            )
+
+        if gap > 0.10:
+            risk_text = 'This suggests possible overfitting because CV is noticeably higher than the test score.'
+        elif gap < -0.10:
+            risk_text = 'The test score is higher than CV, so the holdout split may be small or unusually easy.'
+        else:
+            risk_text = 'The CV/test gap is small, so there is no strong overfitting signal from these metrics.'
+
+        leakage_text = ''
+        weak_feature_text = ''
+
+        if feature_ranking is not None and not feature_ranking.empty:
+            top = feature_ranking.iloc[0]
+
+            if float(top['mutual_information']) > 1.0:
+                leakage_text = (
+                    f" `{top['feature']}` has very high mutual information "
+                    f"({float(top['mutual_information']):.3f}), so inspect it for possible target leakage."
+                )
+
+            weak_features = feature_ranking[
+                feature_ranking['mutual_information'] <= 0.01
+            ]['feature'].head(3).astype(str).tolist()
+
+            if weak_features:
+                weak_feature_text = (
+                    ' If you train with all selected features, compare it against the compact feature set; '
+                    f"low-information columns such as {', '.join(weak_features)} may add noise."
+                )
+
+        return f'{score_text} {risk_text}{leakage_text}{weak_feature_text}'
+
     if any(word in q for word in ['missing', 'null', 'nan']):
         return (
             f"The dataset has {profile['missing_cells']:,} missing cells. "
@@ -624,3 +692,4 @@ def _safe_cv_splits(y: np.ndarray, task_type: str) -> int:
     _, counts = np.unique(y, return_counts=True)
 
     return max(2, min(5, int(counts.min())))
+

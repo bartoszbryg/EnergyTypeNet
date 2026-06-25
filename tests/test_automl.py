@@ -1,6 +1,7 @@
 import pandas as pd
 
 from src.automl import (
+    answer_dataset_question,
     generate_dataset_report,
     guess_task_type,
     prepare_dataset,
@@ -52,6 +53,20 @@ def test_regression_requires_numeric_target():
         assert 'must be numeric' in str(exc)
     else:
         raise AssertionError('Expected non-numeric regression target to fail')
+
+
+def test_classification_requires_repeated_class_examples():
+    df = pd.DataFrame({
+        'feature': [1, 2, 3, 4],
+        'target': [10, 20, 30, 40],
+    })
+
+    try:
+        prepare_dataset(df, 'target', ['feature'], 'classification')
+    except ValueError as exc:
+        assert 'only one row' in str(exc)
+    else:
+        raise AssertionError('Expected one-row-per-class target to fail')
 
 
 def test_prepare_classification_dataset_and_rank_features():
@@ -121,3 +136,35 @@ def test_train_regression_baselines_and_report():
     assert not results.empty
     assert 'test_r2' in results.columns
     assert 'Dataset Report' in report
+
+
+def test_answer_overfitting_question_uses_cv_test_gap():
+    df = pd.DataFrame({
+        'signal': [0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3],
+        'noise': ['a', 'b', 'a', 'b', 'a', 'b', 'a', 'b', 'a', 'b', 'a', 'b'],
+        'target': ['low', 'low', 'low', 'mid', 'mid', 'mid',
+                   'high', 'high', 'high', 'high', 'high', 'high'],
+    })
+    profile = profile_dataset(df)
+    prepared = prepare_dataset(df, 'target', ['signal', 'noise'], 'classification')
+    ranking = rank_features(prepared)
+    results = pd.DataFrame([{
+        'model': 'Logistic Regression',
+        'cv_accuracy': 0.95,
+        'cv_f1_macro': 0.95,
+        'test_accuracy': 0.70,
+        'test_f1_macro': 0.70,
+    }])
+
+    answer = answer_dataset_question(
+        'When I apply all selected features, will the model overfit?',
+        profile,
+        prepared,
+        results,
+        ranking,
+    )
+
+    assert 'CV accuracy' in answer
+    assert 'test accuracy' in answer
+    assert 'overfitting' in answer.lower()
+

@@ -40,6 +40,12 @@ from src.automl import (
     suggest_targets,
     train_baselines,
 )
+from src.llm_assistant import (
+    DEFAULT_OLLAMA_MODEL,
+    build_dataset_context,
+    build_dataset_prompt,
+    stream_ollama,
+)
 from src.data import CLASSES as ENERGY_CLASSES, load_features, load_raw
 from src.models import AttentionClassifier, LogisticRegressionSoftmax
 
@@ -1071,6 +1077,11 @@ def render_dataset_assistant():
     feature_recommendations = recommend_features(prepared)
 
     st.markdown('**Recommended strongest features**')
+    st.caption(
+        'Recommendations combine mutual information with missingness and uniqueness. '
+        'Very high scores can be useful, but they can also indicate target leakage if a '
+        'feature directly encodes the label.'
+    )
     st.dataframe(
         feature_recommendations.style.format({
             'missing_pct': '{:.1%}',
@@ -1109,17 +1120,110 @@ def render_dataset_assistant():
         'KNN, SVM/SVR, random forest, gradient boosting, neural network, and XGBoost.'
     )
 
-    train_clicked = st.button('Train baseline models', type='primary')
+    compare_compact = bool(strong_features and set(strong_features) != set(feature_cols))
+
+    if compare_compact:
+        st.caption(
+            'Training will compare the full selected feature set against the suggested '
+            'compact feature set, so you can see whether removing weak columns helps.'
+        )
+
+    train_clicked = st.button('Train baseline models and compare feature sets', type='primary')
 
     results = None
+    compact_results = None
+    compact_prepared = None
 
     if train_clicked:
         with st.spinner('Training baseline models and computing cross-validation scores...'):
             try:
                 results, _ = train_baselines(prepared)
+
+                if compare_compact:
+                    compact_prepared = prepare_dataset(
+                        df,
+                        target_col,
+                        strong_features,
+                        task_type,
+                    )
+                    compact_results, _ = train_baselines(compact_prepared)
             except Exception as exc:
                 st.error(f'Model training failed: {exc}')
                 return
+
+        if compact_results is not None:
+            st.subheader('Feature Set Comparison')
+            full_best = results.iloc[0]
+            compact_best = compact_results.iloc[0]
+
+            if prepared.task_type == 'classification':
+                comparison_df = pd.DataFrame([
+                    {
+                        'Feature Set': 'All selected features',
+                        'Feature Count': len(prepared.feature_cols),
+                        'Best Model': full_best['model'],
+                        'Test Accuracy': full_best['test_accuracy'],
+                        'Macro F1': full_best['test_f1_macro'],
+                    },
+                    {
+                        'Feature Set': 'Suggested compact features',
+                        'Feature Count': len(compact_prepared.feature_cols),
+                        'Best Model': compact_best['model'],
+                        'Test Accuracy': compact_best['test_accuracy'],
+                        'Macro F1': compact_best['test_f1_macro'],
+                    },
+                ])
+                metric_name = 'Test Accuracy'
+            else:
+                comparison_df = pd.DataFrame([
+                    {
+                        'Feature Set': 'All selected features',
+                        'Feature Count': len(prepared.feature_cols),
+                        'Best Model': full_best['model'],
+                        'Test R2': full_best['test_r2'],
+                        'Test MAE': full_best['test_mae'],
+                    },
+                    {
+                        'Feature Set': 'Suggested compact features',
+                        'Feature Count': len(compact_prepared.feature_cols),
+                        'Best Model': compact_best['model'],
+                        'Test R2': compact_best['test_r2'],
+                        'Test MAE': compact_best['test_mae'],
+                    },
+                ])
+                metric_name = 'Test R2'
+
+            numeric_formats = {
+                col: '{:.3f}'
+                for col in comparison_df.columns
+                if col.startswith('Test') or col == 'Macro F1'
+            }
+            st.dataframe(
+                comparison_df.style.format(numeric_formats),
+                width='stretch',
+                hide_index=True,
+            )
+
+            full_score = float(comparison_df.loc[0, metric_name])
+            compact_score = float(comparison_df.loc[1, metric_name])
+
+            if compact_score > full_score + 0.01:
+                st.success(
+                    'The compact feature set performed better. Removing weak columns '
+                    'likely reduced noise.'
+                )
+            elif full_score > compact_score + 0.01:
+                st.warning(
+                    'The full feature set performed better. Some weak-looking columns '
+                    'may still help when combined with other features.'
+                )
+            else:
+                st.info(
+                    'Both feature sets performed similarly. The compact set is simpler, '
+                    'while the full set keeps more information.'
+                )
+
+        st.subheader('Model Results - All Selected Features')
 
         if prepared.task_type == 'classification':
             st.dataframe(
@@ -1146,6 +1250,34 @@ def render_dataset_assistant():
             )
             st.bar_chart(results.set_index('model')['test_r2'])
 
+        if compact_results is not None:
+            st.subheader('Model Results - Suggested Compact Features')
+
+            if prepared.task_type == 'classification':
+                st.dataframe(
+                    compact_results.style.format({
+                        'cv_accuracy': '{:.3f}',
+                        'cv_f1_macro': '{:.3f}',
+                        'test_accuracy': '{:.3f}',
+                        'test_f1_macro': '{:.3f}',
+                    }),
+                    width='stretch',
+                    hide_index=True,
+                )
+                st.bar_chart(compact_results.set_index('model')['test_accuracy'])
+            else:
+                st.dataframe(
+                    compact_results.style.format({
+                        'cv_r2': '{:.3f}',
+                        'cv_mae': '{:.3f}',
+                        'test_r2': '{:.3f}',
+                        'test_mae': '{:.3f}',
+                    }),
+                    width='stretch',
+                    hide_index=True,
+                )
+                st.bar_chart(compact_results.set_index('model')['test_r2'])
+
         st.subheader('5. Natural-Language Dataset Report')
         report = generate_dataset_report(
             profile,
@@ -1168,6 +1300,19 @@ def render_dataset_assistant():
         st.session_state['assistant_feature_ranking'] = feature_ranking
 
     st.subheader('6. Ask About This Dataset')
+    use_local_llm = st.checkbox(
+        'Use local LLM explanation if Ollama is running',
+        value=False,
+        help=(
+            'Optional. Start Ollama locally and pull a model such as llama3.1. '
+            'If the local model is unavailable, the assistant uses the deterministic answer.'
+        ),
+    )
+    local_llm_model = st.text_input(
+        'Local LLM model',
+        value=DEFAULT_OLLAMA_MODEL,
+        disabled=not use_local_llm,
+    )
     question = st.text_input(
         'Ask a question',
         placeholder='Example: What is the best model? Which features matter most?',
@@ -1185,7 +1330,27 @@ def render_dataset_assistant():
             results_saved,
             ranking_saved,
         )
-        st.info(answer)
+        if use_local_llm:
+            context = build_dataset_context(
+                profile_saved,
+                prepared_saved,
+                results_saved,
+                ranking_saved,
+            )
+            prompt = build_dataset_prompt(context, question)
+
+            try:
+                st.success('Streaming local LLM answer grounded on computed dataset results.')
+                st.write_stream(stream_ollama(prompt, model=local_llm_model))
+            except RuntimeError:
+                st.caption(
+                    'Local LLM streaming was unavailable, so the built-in deterministic '
+                    'assistant answered instead.'
+                )
+                st.info(answer)
+        else:
+            st.caption('Answered with the built-in deterministic assistant.')
+            st.info(answer)
 
 
 # Sidebar and routing
