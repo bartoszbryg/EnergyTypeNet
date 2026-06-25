@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+artifacts/
+results/*
+!results/.gitkeep
+.dvc/cache/
+.dvc/tmp/
