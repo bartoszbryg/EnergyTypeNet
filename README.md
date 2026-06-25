@@ -16,11 +16,11 @@ The more interesting part is the dashboard. You can upload any CSV file, pick a 
 
 ## Dataset background
 
-The Energy Consumption Dataset contains information about energy usage across different building types. Each row describes one building using capacity, usage and environmental attributes. The training set has 1000 buildings and the test set has 100 buildings, which makes it useful for building a model on one split and validating predictions on a separate holdout split.
+The **Energy Consumption Dataset** contains information about energy usage across different building types. Each row describes one building using capacity, usage and environmental attributes. The training set has 1000 buildings and the test set has 100 buildings, which makes it useful for building a model on one split and validating predictions on a separate holdout split.
 
 The original dataset can support both classification and regression tasks. In this project I focus on classification, using building information to predict the building type.
 
-Features included in the dataset:
+**Features included in the dataset:**
 
 - Building Type
 - Square Footage
@@ -30,12 +30,12 @@ Features included in the dataset:
 - Day of Week
 - Energy Consumption
 
-Possible classification targets:
+**Possible classification targets:**
 
 - Building Type
 - Day of Week
 
-Possible regression targets:
+**Possible regression targets:**
 
 - Energy Consumption
 - Appliances Used
