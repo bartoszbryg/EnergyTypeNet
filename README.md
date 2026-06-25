@@ -144,6 +144,15 @@ It can:
 
 The assistant also has an optional local LLM explanation layer. If Ollama is running, you can enable the local LLM toggle in the app and use a model such as `llama3.1` to turn the computed statistics into a more natural streamed answer. If Ollama is not running, the app falls back to the deterministic built-in answer, so the dashboard still works without any LLM dependency.
 
+LLM behavior is intentionally free-first:
+
+- the deterministic assistant is free and works in local and deployed versions
+- local Ollama streaming is free, but only works on machines where Ollama is installed
+- hosted LLM streaming can be added later with Streamlit secrets, but it may cost money because API providers usually charge per token
+- public deployments should keep hosted LLM mode optional or disabled by default to avoid unexpected API usage
+
+For a public demo, the safest setup is to deploy the dashboard with deterministic answers enabled and local Ollama documented as an optional local enhancement. If hosted LLM support is added later, the app should send only computed summaries to the model rather than full raw datasets.
+
 Example local LLM setup:
 
 ```bash
@@ -219,3 +228,14 @@ XGBoost reaches 0.67 test accuracy on the two core features, others sit between 
 ## Deployment
 
 The API is containerised with Docker and can be deployed on Render or Railway using the included Dockerfile. The dashboard deploys to Streamlit Cloud by connecting the GitHub repo and pointing at dashboard.py. See docs/DEPLOYMENT.md for step by step instructions.
+
+Streamlit Cloud dashboard deployment:
+
+1. Push the latest code to GitHub.
+2. Go to Streamlit Community Cloud.
+3. Choose **New app**.
+4. Select this repository and branch.
+5. Set the main file path to `dashboard.py`.
+6. Deploy the app.
+
+The public Streamlit deployment will support CSV upload, profiling, feature selection, baseline training, model comparison, reports and deterministic dataset Q&A. Local Ollama streaming will only work for users running the project on their own machine with Ollama installed. Hosted LLM streaming requires a separate provider integration and private API key configuration.
