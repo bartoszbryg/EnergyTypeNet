@@ -111,11 +111,13 @@ docs/                           deployment guide and DVC notes
 
 ## Dashboard
 
-Two modes in one app:
+Three modes in one app:
 
 **EnergyTypeNet mode** has 9 pages: overview, EDA, model comparison, decision boundaries, confusion matrices, ROC curves, precision-recall curves with threshold sweep, learning curves and a live prediction tool where sliders update all 5 models in real time.
 
 **Custom Dataset mode** lets you upload any CSV. You pick the target column and feature columns, categorical columns get one-hot encoded automatically, and you get model comparison, confusion matrices, ROC curves, PR curves, PCA decision boundary projection and live prediction with a JSON download.
+
+**AI Dataset Assistant mode** profiles any uploaded CSV, suggests likely target and feature columns, recommends classification vs regression, trains tabular baseline models, ranks features, generates a short dataset report and answers basic questions using computed dataset statistics.
 
 ```bash
 streamlit run dashboard.py

@@ -27,6 +27,19 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import LabelEncoder, StandardScaler, label_binarize
 from xgboost import XGBClassifier
 
+from src.automl import (
+    answer_dataset_question,
+    clean_dataframe,
+    generate_dataset_report,
+    guess_task_type,
+    prepare_dataset,
+    profile_dataset,
+    rank_features,
+    recommend_features,
+    suggest_features,
+    suggest_targets,
+    train_baselines,
+)
 from src.data import CLASSES as ENERGY_CLASSES, load_features, load_raw
 from src.models import AttentionClassifier, LogisticRegressionSoftmax
 
@@ -926,10 +939,262 @@ def render_custom_dashboard():
         )
 
 
+def render_dataset_assistant():
+    st.title('AI Dataset Assistant')
+    st.markdown(
+        'Upload a CSV, inspect the dataset, infer possible targets, select features, '
+        'train classification or regression baselines, and generate a short report '
+        'grounded in computed results.'
+    )
+
+    uploaded = st.file_uploader(
+        'Upload a CSV file',
+        type='csv',
+        key='assistant_csv_upload',
+    )
+
+    if uploaded is None:
+        st.info('Upload any tabular CSV dataset to start the assistant workflow.')
+        return
+
+    df = clean_dataframe(pd.read_csv(uploaded))
+
+    if df.empty:
+        st.error('The uploaded CSV has no usable rows or columns.')
+        return
+
+    profile = profile_dataset(df)
+    target_suggestions = suggest_targets(df)
+
+    st.subheader('1. Dataset Profile')
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric('Rows', f"{profile['n_rows']:,}")
+    c2.metric('Columns', f"{profile['n_columns']:,}")
+    c3.metric('Missing cells', f"{profile['missing_cells']:,}")
+    c4.metric('Duplicate rows', f"{profile['duplicate_rows']:,}")
+
+    profile_df = pd.DataFrame(profile['columns'])
+    st.dataframe(
+        profile_df.style.format({'missing_pct': '{:.1%}'}),
+        width='stretch',
+        hide_index=True,
+    )
+
+    with st.expander('Preview uploaded data', expanded=False):
+        st.dataframe(df.head(30), width='stretch')
+
+    st.subheader('2. Target and Feature Suggestions')
+
+    if not target_suggestions:
+        st.error('No valid target columns found. Try a dataset with at least one non-constant column.')
+        return
+
+    target_df = pd.DataFrame(target_suggestions)
+    st.dataframe(
+        target_df.style.format({'missing_pct': '{:.1%}', 'score': '{:.1f}'}),
+        width='stretch',
+        hide_index=True,
+    )
+
+    default_target = target_suggestions[0]['column']
+    target_col = st.selectbox(
+        'Target column',
+        list(df.columns),
+        index=list(df.columns).index(default_target),
+    )
+
+    inferred_task = guess_task_type(df[target_col])
+    task_type = st.radio(
+        'Prediction task',
+        ['classification', 'regression'],
+        index=0 if inferred_task != 'regression' else 1,
+        horizontal=True,
+        key=f'assistant_task_{target_col}',
+    )
+
+    if task_type == 'regression' and not pd.api.types.is_numeric_dtype(df[target_col]):
+        st.warning(
+            f'`{target_col}` is not numeric, so it cannot be used as a regression target. '
+            'Switch to classification or choose a numeric target.'
+        )
+        return
+
+    feature_suggestions = suggest_features(df, target_col)
+    usable_features = [
+        row['column']
+        for row in feature_suggestions
+        if row['usable']
+    ]
+
+    feature_cols = st.multiselect(
+        'Selected candidate feature columns',
+        [col for col in df.columns if col != target_col],
+        default=usable_features[: min(12, len(usable_features))],
+        key=f'assistant_features_{target_col}',
+    )
+    st.caption(
+        'These are usable input columns selected for training. '
+        'The assistant ranks which ones look strongest in the next section.'
+    )
+
+    with st.expander('Feature suggestion details', expanded=False):
+        feature_df = pd.DataFrame(feature_suggestions)
+        st.dataframe(
+            feature_df.style.format({'missing_pct': '{:.1%}'}),
+            width='stretch',
+            hide_index=True,
+        )
+
+    if not feature_cols:
+        st.warning('Select at least one feature column to continue.')
+        return
+
+    try:
+        prepared = prepare_dataset(df, target_col, feature_cols, task_type)
+    except Exception as exc:
+        st.error(f'Could not prepare this dataset: {exc}')
+        return
+
+    st.markdown(
+        f'Prepared **{prepared.task_type}** dataset with '
+        f'**{len(prepared.feature_cols)}** selected features '
+        f'(**{len(prepared.numeric_cols)}** numeric, '
+        f'**{len(prepared.categorical_cols)}** categorical).'
+    )
+
+    if prepared.classes:
+        st.caption('Classes: ' + ', '.join(f'`{cls}`' for cls in prepared.classes))
+
+    st.subheader('3. Feature Selection')
+
+    feature_ranking = rank_features(prepared)
+    feature_recommendations = recommend_features(prepared)
+
+    st.markdown('**Recommended strongest features**')
+    st.dataframe(
+        feature_recommendations.style.format({
+            'missing_pct': '{:.1%}',
+            'mutual_information': '{:.4f}',
+            'quality_score': '{:.3f}',
+        }),
+        width='stretch',
+        hide_index=True,
+    )
+
+    strong_features = feature_recommendations[
+        feature_recommendations['recommendation'].isin(['Strong', 'Moderate'])
+    ]['feature'].tolist()
+
+    if strong_features:
+        st.info(
+            'Suggested compact feature set: '
+            + ', '.join(f'`{feature}`' for feature in strong_features)
+        )
+    else:
+        st.warning(
+            'No strong feature set was detected. You can still train baselines, '
+            'but the dataset may need better predictors.'
+        )
+
+    st.markdown('**Mutual information ranking**')
+    st.dataframe(
+        feature_ranking.style.format({'mutual_information': '{:.4f}'}),
+        width='stretch',
+        hide_index=True,
+    )
+
+    st.subheader('4. Baseline Model Training')
+    st.caption(
+        'The assistant trains a broad baseline suite: dummy baseline, linear model, '
+        'KNN, SVM/SVR, random forest, gradient boosting, neural network, and XGBoost.'
+    )
+
+    train_clicked = st.button('Train baseline models', type='primary')
+
+    results = None
+
+    if train_clicked:
+        with st.spinner('Training baseline models and computing cross-validation scores...'):
+            try:
+                results, _ = train_baselines(prepared)
+            except Exception as exc:
+                st.error(f'Model training failed: {exc}')
+                return
+
+        if prepared.task_type == 'classification':
+            st.dataframe(
+                results.style.format({
+                    'cv_accuracy': '{:.3f}',
+                    'cv_f1_macro': '{:.3f}',
+                    'test_accuracy': '{:.3f}',
+                    'test_f1_macro': '{:.3f}',
+                }),
+                width='stretch',
+                hide_index=True,
+            )
+            st.bar_chart(results.set_index('model')['test_accuracy'])
+        else:
+            st.dataframe(
+                results.style.format({
+                    'cv_r2': '{:.3f}',
+                    'cv_mae': '{:.3f}',
+                    'test_r2': '{:.3f}',
+                    'test_mae': '{:.3f}',
+                }),
+                width='stretch',
+                hide_index=True,
+            )
+            st.bar_chart(results.set_index('model')['test_r2'])
+
+        st.subheader('5. Natural-Language Dataset Report')
+        report = generate_dataset_report(
+            profile,
+            target_suggestions,
+            prepared,
+            results,
+            feature_ranking,
+        )
+        st.markdown(report)
+        st.download_button(
+            'Download dataset report',
+            report,
+            file_name='dataset_report.md',
+            mime='text/markdown',
+        )
+
+        st.session_state['assistant_profile'] = profile
+        st.session_state['assistant_prepared'] = prepared
+        st.session_state['assistant_results'] = results
+        st.session_state['assistant_feature_ranking'] = feature_ranking
+
+    st.subheader('6. Ask About This Dataset')
+    question = st.text_input(
+        'Ask a question',
+        placeholder='Example: What is the best model? Which features matter most?',
+    )
+
+    if question:
+        profile_saved = st.session_state.get('assistant_profile', profile)
+        prepared_saved = st.session_state.get('assistant_prepared', prepared)
+        results_saved = st.session_state.get('assistant_results', results)
+        ranking_saved = st.session_state.get('assistant_feature_ranking', feature_ranking)
+        answer = answer_dataset_question(
+            question,
+            profile_saved,
+            prepared_saved,
+            results_saved,
+            ranking_saved,
+        )
+        st.info(answer)
+
+
 # Sidebar and routing
 
 st.sidebar.title('EnergyTypeNet')
-mode = st.sidebar.radio('Mode', ['EnergyTypeNet (pre-loaded)', 'Custom Dataset'])
+mode = st.sidebar.radio(
+    'Mode',
+    ['EnergyTypeNet (pre-loaded)', 'Custom Dataset', 'AI Dataset Assistant'],
+)
 
 if mode == 'EnergyTypeNet (pre-loaded)':
     st.sidebar.markdown('---')
@@ -941,4 +1206,7 @@ if mode == 'EnergyTypeNet (pre-loaded)':
     )
     render_energy_dashboard(page)
 else:
-    render_custom_dashboard()
+    if mode == 'Custom Dataset':
+        render_custom_dashboard()
+    else:
+        render_dataset_assistant()
