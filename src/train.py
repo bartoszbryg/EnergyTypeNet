@@ -141,7 +141,8 @@ def log_to_mlflow(output: dict, model_path: Path, feature_set: str) -> None:
 
         mlflow.sklearn.log_model(
             output['best_model'],
-            artifact_path='model',
+            name='model',
+            serialization_format='cloudpickle',
             registered_model_name='EnergyTypeNet',
         )
         mlflow.log_artifact(str(model_path), artifact_path='joblib')

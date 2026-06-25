@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 artifacts/
+mlflow.db
+mlruns/
 results/*
 !results/.gitkeep
 .dvc/cache/
