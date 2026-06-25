@@ -111,15 +111,66 @@ docs/                           deployment guide and DVC notes
 
 ## Dashboard
 
-Two modes in one app:
+Three modes in one app:
 
 **EnergyTypeNet mode** has 9 pages: overview, EDA, model comparison, decision boundaries, confusion matrices, ROC curves, precision-recall curves with threshold sweep, learning curves and a live prediction tool where sliders update all 5 models in real time.
 
 **Custom Dataset mode** lets you upload any CSV. You pick the target column and feature columns, categorical columns get one-hot encoded automatically, and you get model comparison, confusion matrices, ROC curves, PR curves, PCA decision boundary projection and live prediction with a JSON download.
 
+**AI Dataset Assistant mode** profiles any uploaded CSV, suggests likely target and feature columns, recommends classification vs regression, trains tabular baseline models, ranks features, generates a short dataset report and answers basic questions using computed dataset statistics.
+
 ```bash
 streamlit run dashboard.py
 ```
+
+---
+
+## AI Dataset Assistant
+
+The assistant turns the dashboard into a small AutoML workflow for tabular CSV files. It is designed to stay grounded in computed results instead of guessing.
+
+It can:
+
+- upload and preview a CSV dataset
+- profile rows, columns, missing values, data types and duplicate rows
+- suggest likely target columns and infer classification vs regression
+- suggest usable feature columns and explain weak or excluded columns
+- rank features with mutual information
+- recommend a compact feature set to compare against all selected features
+- train classification and regression baselines including linear models, KNN, SVM/SVR, random forest, gradient boosting, neural networks and XGBoost
+- compare cross-validation results against holdout-test results
+- generate a short dataset report
+- answer dataset questions about missing values, feature importance, model quality, task type, overfitting and possible leakage
+
+The assistant also has an optional local LLM explanation layer. If Ollama is running, you can enable the local LLM toggle in the app and use a model such as `llama3.1` to turn the computed statistics into a more natural streamed answer. If Ollama is not running, the app falls back to the deterministic built-in answer, so the dashboard still works without any LLM dependency.
+
+LLM behavior is intentionally free-first:
+
+- the deterministic assistant is free and works in local and deployed versions
+- local Ollama streaming is free, but only works on machines where Ollama is installed
+- hosted LLM streaming can be added later with Streamlit secrets, but it may cost money because API providers usually charge per token
+- public deployments should keep hosted LLM mode optional or disabled by default to avoid unexpected API usage
+
+For a public demo, the safest setup is to deploy the dashboard with deterministic answers enabled and local Ollama documented as an optional local enhancement. If hosted LLM support is added later, the app should send only computed summaries to the model rather than full raw datasets.
+
+Example local LLM setup:
+
+```bash
+ollama pull llama3.1
+ollama run llama3.1
+streamlit run dashboard.py
+```
+
+This branch is stable enough to merge when these checks pass:
+
+```bash
+python -m pip check
+pytest -q
+python -m compileall src tests dashboard.py
+streamlit run dashboard.py
+```
+
+Future improvements should be added on separate branches, especially larger features such as chat history, PyTorch deep learning models, clustering workflows or richer LLM agents.
 
 ---
 
@@ -177,3 +228,14 @@ XGBoost reaches 0.67 test accuracy on the two core features, others sit between 
 ## Deployment
 
 The API is containerised with Docker and can be deployed on Render or Railway using the included Dockerfile. The dashboard deploys to Streamlit Cloud by connecting the GitHub repo and pointing at dashboard.py. See docs/DEPLOYMENT.md for step by step instructions.
+
+Streamlit Cloud dashboard deployment:
+
+1. Push the latest code to GitHub.
+2. Go to Streamlit Community Cloud.
+3. Choose **New app**.
+4. Select this repository and branch.
+5. Set the main file path to `dashboard.py`.
+6. Deploy the app.
+
+The public Streamlit deployment will support CSV upload, profiling, feature selection, baseline training, model comparison, reports and deterministic dataset Q&A. Local Ollama streaming will only work for users running the project on their own machine with Ollama installed. Hosted LLM streaming requires a separate provider integration and private API key configuration.
