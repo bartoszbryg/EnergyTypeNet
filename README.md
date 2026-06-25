@@ -6,6 +6,16 @@ Everything is packaged into a REST API, a CI pipeline, MLflow experiment trackin
 
 ---
 
+## Live Demo
+
+Try the Streamlit dashboard here:
+
+[EnergyTypeNet Streamlit App](https://energytypenet.streamlit.app)
+
+The public demo supports CSV upload, dataset profiling, target and feature suggestions, baseline model training, feature ranking, model comparison, dataset reports and deterministic dataset Q&A. Local Ollama streaming is available only when running the project locally.
+
+---
+
 ## What it does
 
 Given data about a building (energy consumption, square footage, number of occupants etc.) the system predicts whether it is Residential, Commercial or Industrial. Six models compete on the same data so you can see exactly where each one wins and loses.
