@@ -1,6 +1,6 @@
 # EnergyTypeNet
 
-I built EnergyTypeNet to predict whether a building is Residential, Commercial or Industrial from energy-consumption and building-attribute data. The core idea was to go beyond simply applying sklearn models and implement several classifiers from scratch so I could understand what is happening inside the learning process. I first built three custom NumPy models: an attention-weighted nearest-neighbor classifier using exponential kernel weighting, a One-vs-Rest logistic regression trained with gradient descent and L2 regularization, and a multiclass Softmax regression with a joint weight matrix and categorical cross-entropy loss. I later extended this into a broader advanced classical model suite with custom decision trees, SVM, Naive Bayes variants and Bayesian linear regression.
+I built EnergyTypeNet to predict whether a building is Residential, Commercial or Industrial from energy-consumption and building-attribute data. The core idea was to go beyond simply applying sklearn models and implement several classifiers from scratch so I could understand what is happening inside the learning process. I originally built three custom NumPy models: an attention-weighted nearest-neighbor classifier using exponential kernel weighting, a One-vs-Rest logistic regression trained with gradient descent and L2 regularization, and a multiclass Softmax regression with a joint weight matrix and categorical cross-entropy loss. I later extended this into a broader advanced classical model suite with custom decision trees, SVM, Naive Bayes variants and Bayesian linear regression.
 
 On top of those custom models, I trained sklearn Logistic Regression, MLP and XGBoost baselines, then compared the full model set with 5-fold stratified cross-validation, holdout evaluation, confusion matrices, ROC/AUC curves, precision-recall curves and learning curves. I also added soft-voting and stacking ensembles to test whether combining Logistic Regression, MLP and XGBoost could improve performance over a single model. The project is packaged like a real machine-learning system: it includes MLflow experiment tracking, a reproducible training script, saved model artifacts, a FastAPI prediction service, Docker deployment support, GitHub Actions CI and a Streamlit dashboard.
 
@@ -12,16 +12,16 @@ The research part answers a specific question I had: is the accuracy ceiling cau
 
 ## Main Capabilities
 
-* Predict building type from energy-consumption and building-attribute data.
-* Compare custom classifiers against sklearn, neural-network and XGBoost baselines.
-* Train soft-voting and stacking ensembles.
-* Run feature engineering, feature selection, decision-boundary and model-diagnostic notebooks.
-* Train and serialize the best model with `joblib`.
-* Serve predictions through a FastAPI endpoint.
-* Explore results through a Streamlit dashboard.
-* Upload custom CSV files and run a lightweight AutoML workflow.
-* Generate dataset reports and grounded natural-language explanations.
-* Optionally stream local LLM answers with Ollama when running locally.
+- Predict building type from energy-consumption and building-attribute data.
+- Compare custom classifiers against sklearn, neural-network and XGBoost baselines.
+- Train soft-voting and stacking ensembles.
+- Run feature engineering, feature selection, decision-boundary and model-diagnostic notebooks.
+- Train and serialize the best model with `joblib`.
+- Serve predictions through a FastAPI endpoint.
+- Explore results through a Streamlit dashboard.
+- Upload custom CSV files and run a lightweight AutoML workflow.
+- Generate dataset reports and grounded natural-language explanations.
+- Optionally stream local LLM answers with Ollama when running locally.
 
 ---
 
@@ -31,20 +31,20 @@ The Energy Consumption Dataset contains 1,000 training rows and 100 test rows de
 
 Features included in the original dataset:
 
-* Building Type
-* Square Footage
-* Number of Occupants
-* Appliances Used
-* Average Temperature
-* Day of Week
-* Energy Consumption
+- Building Type
+- Square Footage
+- Number of Occupants
+- Appliances Used
+- Average Temperature
+- Day of Week
+- Energy Consumption
 
 The main supervised task in this project is **building-type classification**, where the target is `Building Type`.
 
 Possible additional task formulations:
 
-* Classification: `Building Type`, `Day of Week`
-* Regression: `Energy Consumption`, `Appliances Used`, `Average Temperature`, `Square Footage`
+- Classification: `Building Type`, `Day of Week`
+- Regression: `Energy Consumption`, `Appliances Used`, `Average Temperature`, `Square Footage`
 
 This problem is relevant to building management, construction planning, architecture, utility billing and energy-efficiency analysis. The dataset is also useful for discussing model limitations because important real-world factors such as climate, location, insulation, building age, materials and resident behavior are not included.
 
@@ -98,15 +98,15 @@ This branch expands EnergyTypeNet beyond the original custom attention and logis
 
 The advanced suite includes:
 
-* CART-style decision tree classification
-* CART-style decision tree regression
-* soft-margin SVM classification
-* optional RBF-style SVM behavior through random Fourier features
-* Gaussian Naive Bayes
-* Multinomial Naive Bayes
-* Bernoulli Naive Bayes
-* Bayesian Linear Regression
-* additional tests for the new custom estimators
+- CART-style decision tree classification
+- CART-style decision tree regression
+- soft-margin SVM classification
+- optional RBF-style SVM behavior through random Fourier features
+- Gaussian Naive Bayes
+- Multinomial Naive Bayes
+- Bernoulli Naive Bayes
+- Bayesian Linear Regression
+- additional tests for the new custom estimators
 
 The purpose of this branch is to make the project stronger as a learning and portfolio project by showing how several major model families work internally: tree-based learning, margin-based classification, probabilistic classification and Bayesian regression.
 
@@ -126,15 +126,15 @@ The Streamlit app has three modes.
 
 Uses the bundled energy-consumption dataset and project models. It includes:
 
-* overview metrics
-* exploratory data analysis
-* model comparison
-* decision boundaries
-* confusion matrices
-* ROC/AUC curves
-* precision-recall curves
-* learning curves
-* live prediction controls
+- overview metrics
+- exploratory data analysis
+- model comparison
+- decision boundaries
+- confusion matrices
+- ROC/AUC curves
+- precision-recall curves
+- learning curves
+- live prediction controls
 
 ### Custom Dataset Mode
 
@@ -144,16 +144,16 @@ Lets a user upload a CSV, manually choose target/features and run a reusable tab
 
 Turns any uploaded CSV into a guided AutoML-style analysis:
 
-* profiles rows, columns, dtypes, missing values and duplicate rows
-* suggests likely target columns
-* infers classification vs regression
-* suggests usable feature columns
-* ranks features with mutual information
-* recommends a compact feature set
-* trains classification or regression baselines
-* compares full selected features against compact selected features
-* generates a short dataset report
-* answers questions about model quality, missingness, important features, task type, overfitting and leakage
+- profiles rows, columns, dtypes, missing values and duplicate rows
+- suggests likely target columns
+- infers classification vs regression
+- suggests usable feature columns
+- ranks features with mutual information
+- recommends a compact feature set
+- trains classification or regression baselines
+- compares full selected features against compact selected features
+- generates a short dataset report
+- answers questions about model quality, missingness, important features, task type, overfitting and leakage
 
 The assistant uses deterministic, computed-statistic answers by default. Local LLM streaming is optional and only runs when Ollama is installed and active on the user's machine.
 
@@ -165,10 +165,10 @@ The upload workflow is guarded for normal public use: it expects CSV input, remo
 
 The app is free-first by design.
 
-* Deterministic dataset explanations work locally and in public deployments without any API key.
-* Local Ollama streaming is free, but only works on a machine with Ollama installed.
-* Hosted LLM streaming can be added later, but it may cost money because API providers usually charge per token.
-* Public demos should keep hosted LLM mode disabled by default unless usage limits are added.
+- Deterministic dataset explanations work locally and in public deployments without any API key.
+- Local Ollama streaming is free, but only works on a machine with Ollama installed.
+- Hosted LLM streaming can be added later, but it may cost money because API providers usually charge per token.
+- Public demos should keep hosted LLM mode disabled by default unless usage limits are added.
 
 To test local LLM streaming:
 
@@ -408,8 +408,8 @@ The AI Dataset Assistant extends the project beyond this one dataset by making t
 
 Good future improvements:
 
-* `deploy-streamlit`: add live app link and screenshots after deployment
-* `regularization-suite`: add L1/L2 regularization experiments, Ridge, Lasso and ElasticNet comparisons
-* `pytorch-tabular-models`: add custom PyTorch classifier/regressor and training curves
-* `dataset-chat-agent`: add chat history and richer follow-up questions
-* `hosted-llm-provider`: add optional API-key based hosted LLM streaming with usage controls
+- `deploy-streamlit`: add live app link and screenshots after deployment
+- `regularization-suite`: add L1/L2 regularization experiments, Ridge, Lasso and ElasticNet comparisons
+- `pytorch-tabular-models`: add custom PyTorch classifier/regressor and training curves
+- `dataset-chat-agent`: add chat history and richer follow-up questions
+- `hosted-llm-provider`: add optional API-key based hosted LLM streaming with usage controls
