@@ -197,6 +197,10 @@ notebooks/
   04_model_interpretability.ipynb
   05_ensemble_stacking.ipynb
   06_synthetic_experiment.ipynb
+  07_linear_regression_perceptron.ipynb
+  08_decision_trees.ipynb
+  09_svm.ipynb
+  10_probabilistic_framework.ipynb
 
 src/
   api.py                             FastAPI prediction service
