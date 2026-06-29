@@ -59,6 +59,13 @@ Custom models implemented from scratch:
 | `AttentionClassifier` | NumPy + sklearn-compatible estimator API | Kernel-weighted nearest-neighbor style classifier |
 | `LogisticRegressionOvR` | NumPy | One-vs-Rest logistic regression with gradient descent and L2 regularization |
 | `LogisticRegressionSoftmax` | NumPy | Multiclass softmax regression with cross-entropy loss |
+| `DecisionTreeClassifierCustom` | NumPy | CART-style classifier with Gini or entropy splits |
+| `DecisionTreeRegressorCustom` | NumPy | CART-style regressor using MSE reduction |
+| `SVMClassifierCustom` | NumPy + random Fourier features for RBF mode | Binary soft-margin SVM with hinge-loss optimization |
+| `GaussianNaiveBayes` | NumPy | Probabilistic classifier for continuous numeric features |
+| `MultinomialNaiveBayes` | NumPy | Count-feature Naive Bayes for text or frequency data |
+| `BernoulliNaiveBayes` | NumPy | Binary-feature Naive Bayes with optional thresholding |
+| `BayesianLinearRegression` | NumPy | Bayesian regression with predictive mean and variance |
 
 Production training candidates in `src/train.py`:
 
@@ -376,7 +383,7 @@ The AI Dataset Assistant extends the project beyond this one dataset by making t
 Good future improvements:
 
 - `deploy-streamlit`: add live app link and screenshots after deployment
-- `advanced-model-suite`: add Decision Tree, Extra Trees, AdaBoost, Naive Bayes, Lasso and ElasticNet
+- `advanced-model-suite`: in progress - Decision Trees, SVMs and Naive Bayes implemented; next add Extra Trees, AdaBoost, Lasso and ElasticNet
 - `pytorch-tabular-models`: add custom PyTorch classifier/regressor and training curves
 - `dataset-chat-agent`: add chat history and richer follow-up questions
 - `hosted-llm-provider`: add optional API-key based hosted LLM streaming with usage controls
