@@ -1,6 +1,6 @@
 # EnergyTypeNet
 
-I built EnergyTypeNet to predict whether a building is Residential, Commercial or Industrial from energy-consumption and building-attribute data. The core idea was to go beyond simply applying sklearn models and implement several classifiers from scratch so I could understand what is happening inside the learning process. I built three custom NumPy models: an attention-weighted nearest-neighbor classifier using exponential kernel weighting, a One-vs-Rest logistic regression trained with gradient descent and L2 regularization, and a multiclass Softmax regression with a joint weight matrix and categorical cross-entropy loss.
+I built EnergyTypeNet to predict whether a building is Residential, Commercial or Industrial from energy-consumption and building-attribute data. The core idea was to go beyond simply applying sklearn models and implement several classifiers from scratch so I could understand what is happening inside the learning process. I originally built three custom NumPy models: an attention-weighted nearest-neighbor classifier using exponential kernel weighting, a One-vs-Rest logistic regression trained with gradient descent and L2 regularization, and a multiclass Softmax regression with a joint weight matrix and categorical cross-entropy loss. I later extended this into a broader advanced classical model suite with custom decision trees, SVM, Naive Bayes variants and Bayesian linear regression.
 
 On top of those custom models, I trained sklearn Logistic Regression, MLP and XGBoost baselines, then compared the full model set with 5-fold stratified cross-validation, holdout evaluation, confusion matrices, ROC/AUC curves, precision-recall curves and learning curves. I also added soft-voting and stacking ensembles to test whether combining Logistic Regression, MLP and XGBoost could improve performance over a single model. The project is packaged like a real machine-learning system: it includes MLflow experiment tracking, a reproducible training script, saved model artifacts, a FastAPI prediction service, Docker deployment support, GitHub Actions CI and a Streamlit dashboard.
 
@@ -54,41 +54,61 @@ This problem is relevant to building management, construction planning, architec
 
 Custom models implemented from scratch:
 
-| Model | Implementation | Purpose |
-|---|---|---|
-| `AttentionClassifier` | NumPy + sklearn-compatible estimator API | Kernel-weighted nearest-neighbor style classifier |
-| `LogisticRegressionOvR` | NumPy | One-vs-Rest logistic regression with gradient descent and L2 regularization |
-| `LogisticRegressionSoftmax` | NumPy | Multiclass softmax regression with cross-entropy loss |
-| `DecisionTreeClassifierCustom` | NumPy | CART-style classifier with Gini or entropy splits |
-| `DecisionTreeRegressorCustom` | NumPy | CART-style regressor using MSE reduction |
-| `SVMClassifierCustom` | NumPy + random Fourier features for RBF mode | Binary soft-margin SVM with hinge-loss optimization |
-| `GaussianNaiveBayes` | NumPy | Probabilistic classifier for continuous numeric features |
-| `MultinomialNaiveBayes` | NumPy | Count-feature Naive Bayes for text or frequency data |
-| `BernoulliNaiveBayes` | NumPy | Binary-feature Naive Bayes with optional thresholding |
-| `BayesianLinearRegression` | NumPy | Bayesian regression with predictive mean and variance |
+| Model                          | Implementation                               | Purpose                                                                     |
+| ------------------------------ | -------------------------------------------- | --------------------------------------------------------------------------- |
+| `AttentionClassifier`          | NumPy + sklearn-compatible estimator API     | Kernel-weighted nearest-neighbor style classifier                           |
+| `LogisticRegressionOvR`        | NumPy                                        | One-vs-Rest logistic regression with gradient descent and L2 regularization |
+| `LogisticRegressionSoftmax`    | NumPy                                        | Multiclass softmax regression with cross-entropy loss                       |
+| `DecisionTreeClassifierCustom` | NumPy                                        | CART-style classifier with Gini or entropy splits                           |
+| `DecisionTreeRegressorCustom`  | NumPy                                        | CART-style regressor using MSE reduction                                    |
+| `SVMClassifierCustom`          | NumPy + random Fourier features for RBF mode | Binary soft-margin SVM with hinge-loss optimization                         |
+| `GaussianNaiveBayes`           | NumPy                                        | Probabilistic classifier for continuous numeric features                    |
+| `MultinomialNaiveBayes`        | NumPy                                        | Count-feature Naive Bayes for text or frequency data                        |
+| `BernoulliNaiveBayes`          | NumPy                                        | Binary-feature Naive Bayes with optional thresholding                       |
+| `BayesianLinearRegression`     | NumPy                                        | Bayesian regression with predictive mean and variance                       |
 
 Production training candidates in `src/train.py`:
 
-| Model | Notes |
-|---|---|
-| Logistic Regression | Standardized sklearn pipeline |
-| MLPClassifier | sklearn neural network baseline |
-| XGBoost | Gradient-boosted tree model |
-| Soft Voting | Combines Logistic Regression, MLP and XGBoost |
-| Stacking | Meta-learner over Logistic Regression, MLP and XGBoost probabilities |
+| Model               | Notes                                                                |
+| ------------------- | -------------------------------------------------------------------- |
+| Logistic Regression | Standardized sklearn pipeline                                        |
+| MLPClassifier       | sklearn neural network baseline                                      |
+| XGBoost             | Gradient-boosted tree model                                          |
+| Soft Voting         | Combines Logistic Regression, MLP and XGBoost                        |
+| Stacking            | Meta-learner over Logistic Regression, MLP and XGBoost probabilities |
 
 The reusable AI Dataset Assistant also trains classification and regression baselines for uploaded CSV files:
 
-| Classification | Regression |
-|---|---|
-| Dummy baseline | Dummy baseline |
-| Logistic Regression | Ridge Regression |
-| KNN | KNN Regressor |
-| SVM | SVR |
-| Random Forest | Random Forest Regressor |
-| Gradient Boosting | Gradient Boosting Regressor |
-| MLP Neural Network | MLP Regressor |
-| XGBoost | XGBoost Regressor |
+| Classification      | Regression                  |
+| ------------------- | --------------------------- |
+| Dummy baseline      | Dummy baseline              |
+| Logistic Regression | Ridge Regression            |
+| KNN                 | KNN Regressor               |
+| SVM                 | SVR                         |
+| Random Forest       | Random Forest Regressor     |
+| Gradient Boosting   | Gradient Boosting Regressor |
+| MLP Neural Network  | MLP Regressor               |
+| XGBoost             | XGBoost Regressor           |
+
+---
+
+## Advanced Model Suite
+
+This branch expands EnergyTypeNet beyond the original custom attention and logistic-regression models by adding a broader set of classical machine-learning algorithms implemented from scratch.
+
+The advanced suite includes:
+
+- CART-style decision tree classification
+- CART-style decision tree regression
+- soft-margin SVM classification
+- optional RBF-style SVM behavior through random Fourier features
+- Gaussian Naive Bayes
+- Multinomial Naive Bayes
+- Bernoulli Naive Bayes
+- Bayesian Linear Regression
+- additional tests for the new custom estimators
+
+The purpose of this branch is to make the project stronger as a learning and portfolio project by showing how several major model families work internally: tree-based learning, margin-based classification, probabilistic classification and Bayesian regression.
 
 ---
 
@@ -177,6 +197,10 @@ notebooks/
   04_model_interpretability.ipynb
   05_ensemble_stacking.ipynb
   06_synthetic_experiment.ipynb
+  07_linear_regression_perceptron.ipynb
+  08_decision_trees.ipynb
+  09_svm.ipynb
+  10_probabilistic_framework.ipynb
 
 src/
   api.py                             FastAPI prediction service
@@ -184,7 +208,7 @@ src/
   data.py                            Energy dataset loading and feature engineering
   evaluation.py                      Evaluation and plotting helpers
   llm_assistant.py                   Optional local Ollama prompt/streaming helpers
-  models.py                          Custom NumPy classifiers
+  models.py                          Custom NumPy classifiers and regressors
   predict.py                         CLI prediction helpers
   synthetic_experiment.py            Synthetic separability experiment
   train.py                           Production model training script
@@ -374,6 +398,8 @@ See `docs/DEPLOYMENT.md` for deployment notes.
 
 The core EnergyTypeNet task is intentionally honest about feature limitations. The two-feature benchmark using `Energy Consumption` and `Square Footage` is the cleanest comparison because it avoids features that may encode the label too directly. The synthetic separability experiment supports the idea that the accuracy ceiling is mainly caused by class overlap in feature space, not simply by a shortage of rows.
 
+The advanced model suite extends the project by comparing several learning families beyond the original models: tree-based models, margin-based classification, probabilistic classifiers and Bayesian regression.
+
 The AI Dataset Assistant extends the project beyond this one dataset by making the workflow reusable for other tabular CSV files while keeping explanations grounded in computed statistics.
 
 ---
@@ -383,9 +409,7 @@ The AI Dataset Assistant extends the project beyond this one dataset by making t
 Good future improvements:
 
 - `deploy-streamlit`: add live app link and screenshots after deployment
-- `advanced-model-suite`: in progress - Decision Trees, SVMs and Naive Bayes implemented; next add Extra Trees, AdaBoost, Lasso and ElasticNet
+- `regularization-suite`: add L1/L2 regularization experiments, Ridge, Lasso and ElasticNet comparisons
 - `pytorch-tabular-models`: add custom PyTorch classifier/regressor and training curves
 - `dataset-chat-agent`: add chat history and richer follow-up questions
 - `hosted-llm-provider`: add optional API-key based hosted LLM streaming with usage controls
-
-
