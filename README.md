@@ -1,6 +1,6 @@
 # EnergyTypeNet
 
-I built EnergyTypeNet to predict whether a building is Residential, Commercial or Industrial from energy-consumption and building-attribute data. The core idea was to go beyond simply applying sklearn models and implement several classifiers from scratch so I could understand what is happening inside the learning process. I originally built three custom NumPy models: an attention-weighted nearest-neighbor classifier using exponential kernel weighting, a One-vs-Rest logistic regression trained with gradient descent and L2 regularization, and a multiclass Softmax regression with a joint weight matrix and categorical cross-entropy loss. I later extended this into a broader advanced classical model suite with custom decision trees, SVM, Naive Bayes variants and Bayesian linear regression. I also added a regularization deep-dive notebook covering Ridge, Lasso, ElasticNet and regularized logistic regression.
+I built EnergyTypeNet to predict whether a building is Residential, Commercial or Industrial from energy-consumption and building-attribute data. The core idea was to go beyond simply applying sklearn models and implement several classifiers from scratch so I could understand what is happening inside the learning process. I originally built three custom NumPy models: an attention-weighted nearest-neighbor classifier using exponential kernel weighting, a One-vs-Rest logistic regression trained with gradient descent and L2 regularization, and a multiclass Softmax regression with a joint weight matrix and categorical cross-entropy loss. I later extended this into a broader advanced classical model suite with custom decision trees, SVM, Naive Bayes variants and Bayesian linear regression. I also added deep-dive notebooks for regularization and dimensionality reduction, covering Ridge, Lasso, ElasticNet, regularized logistic regression, PCA, LDA, Kernel PCA, t-SNE and optional UMAP.
 
 On top of those custom models, I trained sklearn Logistic Regression, MLP and XGBoost baselines, then compared the full model set with 5-fold stratified cross-validation, holdout evaluation, confusion matrices, ROC/AUC curves, precision-recall curves and learning curves. I also added soft-voting and stacking ensembles to test whether combining Logistic Regression, MLP and XGBoost could improve performance over a single model. The project is packaged like a real machine-learning system: it includes MLflow experiment tracking, a reproducible training script, saved model artifacts, a FastAPI prediction service, Docker deployment support, GitHub Actions CI and a Streamlit dashboard.
 
@@ -17,6 +17,7 @@ The research part answers a specific question I had: is the accuracy ceiling cau
 - Train soft-voting and stacking ensembles.
 - Run feature engineering, feature selection, decision-boundary and model-diagnostic notebooks.
 - Study regularization with Ridge, Lasso, ElasticNet and regularized logistic regression experiments.
+- Study dimensionality reduction with custom PCA, LDA, Kernel PCA, t-SNE and optional UMAP experiments.
 - Train and serialize the best model with `joblib`.
 - Serve predictions through a FastAPI endpoint.
 - Explore results through a Streamlit dashboard.
@@ -71,6 +72,9 @@ Custom models implemented from scratch:
 | `LassoRegressionCustom`        | NumPy                                        | Coordinate-descent L1 regression for sparse feature selection               |
 | `ElasticNetCustom`             | NumPy                                        | Coordinate-descent regression combining L1 and L2 penalties                 |
 | `RegularizedLogisticRegression` | NumPy                                       | One-vs-Rest logistic regression with none, L1, L2 or ElasticNet penalties   |
+| `PCACustom`                    | NumPy + sklearn-compatible transformer API   | Principal Component Analysis with optional whitening and reconstruction     |
+| `LDACustom`                    | NumPy + sklearn-compatible transformer API   | Supervised Linear Discriminant Analysis projection                          |
+| `KernelPCACustom`              | NumPy + sklearn-compatible transformer API   | Kernel PCA with RBF, polynomial, linear and sigmoid kernels                 |
 
 Production training candidates in `src/train.py`:
 
@@ -137,6 +141,31 @@ Key notebook findings:
 - Custom Ridge, Lasso and ElasticNet match sklearn predictions on the EnergyTypeNet regression setup at displayed precision.
 - ElasticNet is slightly strongest on the EnergyTypeNet regression sanity check, but Ridge and Lasso are very close.
 - On the two-feature building-type classification task, strong regularization can underfit because the feature space is already limited.
+
+---
+
+## Dimensionality Reduction Suite
+
+The `dimensionality-reduction` branch adds a focused dimensionality-reduction study. Notebook 12 keeps EnergyTypeNet as the primary dataset and uses small in-memory sklearn datasets only when a concept needs clean 2D geometry.
+
+The dimensionality-reduction suite includes:
+
+- custom NumPy PCA with explained variance, whitening support and inverse reconstruction
+- custom NumPy LDA for supervised class-separating projections
+- custom NumPy Kernel PCA with RBF, polynomial, linear and sigmoid kernels
+- PCA scree plots, biplots, 2D views, 3D views and reconstruction-error analysis
+- PCA vs LDA comparison on EnergyTypeNet using silhouette scores
+- t-SNE visualization on EnergyTypeNet and sklearn digits
+- Kernel PCA demonstrations on nonlinear circles and EnergyTypeNet downstream accuracy
+- optional UMAP visualization when `umap-learn` is installed
+- downstream comparison of raw features, PCA, LDA and Kernel PCA with Logistic Regression
+
+Key notebook findings:
+
+- PCA is useful for compression and variance explanation, but it does not directly optimize class separation.
+- LDA is more appropriate when the goal is supervised separation between building classes.
+- Kernel PCA can expose nonlinear structure, but kernel and gamma choices matter.
+- Dimensionality reduction should be judged by both visualization quality and downstream model performance.
 
 ---
 
@@ -230,6 +259,7 @@ notebooks/
   09_svm.ipynb
   10_probabilistic_framework.ipynb
   11_regularization.ipynb
+  12_dimensionality_reduction.ipynb
 
 src/
   api.py                             FastAPI prediction service
@@ -387,7 +417,7 @@ Expected current result:
 
 ```text
 No broken requirements found.
-35 passed
+39 passed
 compileall passed
 ```
 
@@ -431,6 +461,8 @@ The advanced model suite extends the project by comparing several learning famil
 
 The regularization notebook extends this analysis by showing how L1, L2 and ElasticNet penalties control model complexity, coefficient size and sparsity. It compares custom Ridge, Lasso, ElasticNet and regularized logistic-regression implementations against sklearn references and connects the results back to EnergyTypeNet.
 
+The dimensionality-reduction notebook adds PCA, LDA, Kernel PCA, t-SNE and optional UMAP experiments. It shows the difference between unsupervised variance-preserving projections and supervised class-separating projections, then checks whether reduced representations help or hurt downstream Logistic Regression accuracy.
+
 The AI Dataset Assistant extends the project beyond this one dataset by making the workflow reusable for other tabular CSV files while keeping explanations grounded in computed statistics.
 
 ---
@@ -440,8 +472,7 @@ The AI Dataset Assistant extends the project beyond this one dataset by making t
 Good future improvements:
 
 - `deploy-streamlit`: add live app link and screenshots after deployment
-- `dimensionality-reduction`: add custom PCA, LDA, KernelPCA, t-SNE and optional UMAP experiments
-- `clustering-suite`: add K-Means, hierarchical clustering, DBSCAN and unsupervised evaluation metrics
+- `unsupervised-clustering`: add custom K-Means, DBSCAN, Gaussian Mixture Models, agglomerative clustering and clustering diagnostics
 - `ensemble-extensions`: add Extra Trees, AdaBoost and broader ensemble diagnostics
 - `pytorch-tabular-models`: add custom PyTorch classifier/regressor and training curves
 - `refactor-models-package`: split `src/models.py` into focused modules after the model suite stabilizes

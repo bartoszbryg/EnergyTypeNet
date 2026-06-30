@@ -1,5 +1,9 @@
 import numpy as np
-from sklearn.datasets import make_blobs
+import pytest
+from sklearn.datasets import make_blobs, make_circles
+from sklearn.decomposition import PCA
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import StratifiedKFold, cross_val_score
 
 from src.models import (
     AdalineGD,
@@ -14,7 +18,10 @@ from src.models import (
     LinearRegressionGD,
     LinearRegressionNormal,
     LogisticRegressionSoftmax,
+    KernelPCACustom,
+    LDACustom,
     MultinomialNaiveBayes,
+    PCACustom,
     Perceptron,
     RegularizedLogisticRegression,
     RidgeRegressionCustom,
@@ -284,3 +291,66 @@ def test_regularized_logistic_regression_predicts_multiclass_blobs():
     assert model.loss_history_[0] > model.loss_history_[-1]
     assert model.score(X, y) > 0.95
     np.testing.assert_allclose(model.predict_proba(X[:5]).sum(axis=1), np.ones(5))
+
+
+def test_pca_custom_matches_sklearn_variance_and_reconstructs():
+    rng = np.random.RandomState(42)
+    X = rng.normal(size=(100, 4))
+    X[:, 2] = 0.5 * X[:, 0] + rng.normal(scale=0.05, size=100)
+
+    custom = PCACustom(n_components=2).fit(X)
+    sklearn_pca = PCA(n_components=2).fit(X)
+
+    np.testing.assert_allclose(
+        custom.explained_variance_ratio_,
+        sklearn_pca.explained_variance_ratio_,
+        atol=1e-6,
+    )
+
+    alignment = np.abs(np.sum(custom.components_ * sklearn_pca.components_, axis=1))
+    np.testing.assert_allclose(alignment, np.ones(2), atol=1e-6)
+
+    Z = custom.transform(X)
+    reconstructed = custom.inverse_transform(Z)
+
+    assert Z.shape == (100, 2)
+    assert reconstructed.shape == X.shape
+    assert np.mean((X - reconstructed) ** 2) < np.var(X)
+
+
+def test_lda_custom_projects_multiclass_blobs():
+    X, y = make_blobs(
+        n_samples=150,
+        centers=[[-3, -3, 0], [0, 3, 2], [3, -3, -2]],
+        cluster_std=0.5,
+        random_state=42,
+    )
+
+    model = LDACustom(n_components=2)
+    Z = model.fit_transform(X, y)
+    class_means = np.vstack([Z[y == cls].mean(axis=0) for cls in model.classes_])
+
+    assert Z.shape == (150, 2)
+    assert model.scalings_.shape == (3, 2)
+    assert model.explained_variance_ratio_.sum() > 0.99
+    assert np.linalg.norm(class_means[0] - class_means[1]) > 1.0
+
+
+def test_kernel_pca_custom_rbf_separates_circles():
+    X, y = make_circles(n_samples=160, factor=0.35, noise=0.04, random_state=42)
+
+    model = KernelPCACustom(n_components=3, kernel='rbf', gamma=1.0)
+    Z = model.fit_transform(X)
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    score = cross_val_score(LogisticRegression(max_iter=1000), Z, y, cv=cv).mean()
+
+    assert Z.shape == (160, 3)
+    assert np.all(model.lambdas_ > 0)
+    assert score > 0.95
+
+
+def test_kernel_pca_rejects_unknown_kernel():
+    model = KernelPCACustom(kernel='unknown')
+
+    with pytest.raises(ValueError):
+        model.fit(np.ones((5, 2)))
