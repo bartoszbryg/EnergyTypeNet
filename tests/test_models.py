@@ -1,19 +1,26 @@
 import numpy as np
 import pytest
-from sklearn.datasets import make_blobs, make_circles
+from sklearn.cluster import AgglomerativeClustering, DBSCAN, KMeans
+from sklearn.datasets import make_blobs, make_circles, make_moons
 from sklearn.decomposition import PCA
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import adjusted_rand_score
+from sklearn.mixture import GaussianMixture
 from sklearn.model_selection import StratifiedKFold, cross_val_score
 
 from src.models import (
     AdalineGD,
+    AgglomerativeCustom,
     AttentionClassifier,
     BayesianLinearRegression,
     BernoulliNaiveBayes,
+    DBSCANCustom,
     DecisionTreeClassifierCustom,
     DecisionTreeRegressorCustom,
     ElasticNetCustom,
+    GaussianMixtureModelCustom,
     GaussianNaiveBayes,
+    KMeansCustom,
     LassoRegressionCustom,
     LinearRegressionGD,
     LinearRegressionNormal,
@@ -354,3 +361,67 @@ def test_kernel_pca_rejects_unknown_kernel():
 
     with pytest.raises(ValueError):
         model.fit(np.ones((5, 2)))
+
+
+def test_kmeans_custom_matches_sklearn_on_blobs():
+    X, y = make_blobs(
+        n_samples=120,
+        centers=[[-3, -3], [0, 3], [3, -3]],
+        cluster_std=0.45,
+        random_state=42,
+    )
+
+    custom = KMeansCustom(n_clusters=3, n_init=10, random_state=42).fit(X)
+    reference = KMeans(n_clusters=3, n_init=10, random_state=42).fit(X)
+
+    assert adjusted_rand_score(y, custom.labels_) > 0.95
+    assert custom.transform(X[:5]).shape == (5, 3)
+    assert abs(custom.inertia_ - reference.inertia_) / reference.inertia_ < 0.05
+
+
+def test_dbscan_custom_matches_sklearn_on_moons():
+    X, _ = make_moons(n_samples=160, noise=0.04, random_state=42)
+
+    custom_labels = DBSCANCustom(eps=0.25, min_samples=5).fit_predict(X)
+    reference_labels = DBSCAN(eps=0.25, min_samples=5).fit_predict(X)
+
+    assert adjusted_rand_score(reference_labels, custom_labels) > 0.95
+
+
+def test_gaussian_mixture_custom_clusters_blobs():
+    X, y = make_blobs(
+        n_samples=150,
+        centers=[[-3, -3], [0, 3], [3, -3]],
+        cluster_std=0.55,
+        random_state=42,
+    )
+
+    custom = GaussianMixtureModelCustom(n_components=3, max_iter=100, random_state=42)
+    custom.fit(X)
+    reference = GaussianMixture(n_components=3, random_state=42).fit(X)
+
+    proba = custom.predict_proba(X[:6])
+
+    assert adjusted_rand_score(y, custom.predict(X)) > 0.95
+    assert proba.shape == (6, 3)
+    np.testing.assert_allclose(proba.sum(axis=1), np.ones(6))
+    assert abs(custom.score(X) - reference.score(X)) < 0.5
+
+
+def test_agglomerative_custom_matches_sklearn_linkages():
+    X, _ = make_blobs(
+        n_samples=45,
+        centers=[[-3, -3], [0, 3], [3, -3]],
+        cluster_std=0.45,
+        random_state=42,
+    )
+
+    for linkage in ['single', 'complete', 'average', 'ward']:
+        custom = AgglomerativeCustom(n_clusters=3, linkage=linkage)
+        custom_labels = custom.fit_predict(X)
+
+        reference = AgglomerativeClustering(n_clusters=3, linkage=linkage)
+        reference_labels = reference.fit_predict(X)
+
+        assert custom.linkage_matrix_.shape == (X.shape[0] - 1, 4)
+        assert adjusted_rand_score(reference_labels, custom_labels) > 0.90

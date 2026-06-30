@@ -7,6 +7,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from sklearn.compose import ColumnTransformer
 from sklearn.dummy import DummyClassifier, DummyRegressor
 from sklearn.ensemble import (
@@ -19,6 +20,7 @@ from sklearn.feature_selection import mutual_info_classif, mutual_info_regressio
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.metrics import accuracy_score, f1_score, mean_absolute_error, r2_score
+from sklearn.metrics import silhouette_score
 from sklearn.model_selection import cross_validate, train_test_split
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 from sklearn.neural_network import MLPClassifier, MLPRegressor
@@ -661,6 +663,78 @@ def answer_dataset_question(
         'feature importance, task type, and baseline model results based on the '
         'computed dataset profile.'
     )
+
+
+def cluster_analysis(X: pd.DataFrame | np.ndarray, max_k: int = 10) -> dict[str, Any]:
+    """Run a compact unsupervised clustering diagnostic on numeric data.
+
+    The helper is intentionally lightweight so the dashboard can use it on
+    uploaded CSV files without turning clustering into a long-running job.
+    """
+    try:
+        from src.models import GaussianMixtureModelCustom, KMeansCustom
+    except ImportError as exc:
+        return {'error': f'Custom clustering models are unavailable: {exc}'}
+
+    X_array = np.asarray(X, dtype=float)
+
+    if X_array.ndim != 2:
+        raise ValueError('cluster_analysis expects a 2D numeric matrix.')
+
+    if X_array.shape[0] < 4:
+        raise ValueError('cluster_analysis needs at least 4 rows.')
+
+    max_k = max(2, min(int(max_k), X_array.shape[0] - 1))
+    X_scaled = StandardScaler().fit_transform(X_array)
+
+    inertias: dict[int, float] = {}
+    silhouettes: dict[int, float] = {}
+    models: dict[int, Any] = {}
+
+    for k in range(2, max_k + 1):
+        model = KMeansCustom(n_clusters=k, n_init=10, random_state=42)
+        model.fit(X_scaled)
+
+        inertias[k] = float(model.inertia_)
+
+        if len(np.unique(model.labels_)) > 1:
+            silhouettes[k] = float(silhouette_score(X_scaled, model.labels_))
+        else:
+            silhouettes[k] = -1.0
+
+        models[k] = model
+
+    best_k = max(silhouettes, key=silhouettes.get)
+    best_kmeans = models[best_k]
+
+    gmm = GaussianMixtureModelCustom(n_components=best_k, random_state=42)
+    gmm.fit(X_scaled)
+    gmm_labels = gmm.predict(X_scaled)
+
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4))
+
+    axes[0].plot(list(inertias.keys()), list(inertias.values()), marker='o')
+    axes[0].set_title('K-Means Elbow Curve')
+    axes[0].set_xlabel('k')
+    axes[0].set_ylabel('Inertia')
+
+    axes[1].plot(list(silhouettes.keys()), list(silhouettes.values()), marker='o')
+    axes[1].axvline(best_k, color='tab:red', linestyle='--', label=f'best k={best_k}')
+    axes[1].set_title('Silhouette by k')
+    axes[1].set_xlabel('k')
+    axes[1].set_ylabel('Silhouette')
+    axes[1].legend()
+
+    fig.tight_layout()
+
+    return {
+        'best_k': int(best_k),
+        'kmeans_labels': best_kmeans.labels_,
+        'gmm_labels': gmm_labels,
+        'inertias': inertias,
+        'silhouette_scores': silhouettes,
+        'figure': fig,
+    }
 
 
 def _safe_example(series: pd.Series) -> str:
