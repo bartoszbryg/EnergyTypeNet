@@ -1,6 +1,6 @@
 # EnergyTypeNet
 
-I built EnergyTypeNet to predict whether a building is Residential, Commercial or Industrial from energy-consumption and building-attribute data. The core idea was to go beyond simply applying sklearn models and implement several classifiers from scratch so I could understand what is happening inside the learning process. I originally built three custom NumPy models: an attention-weighted nearest-neighbor classifier using exponential kernel weighting, a One-vs-Rest logistic regression trained with gradient descent and L2 regularization, and a multiclass Softmax regression with a joint weight matrix and categorical cross-entropy loss. I later extended this into a broader advanced classical model suite with custom decision trees, SVM, Naive Bayes variants and Bayesian linear regression.
+I built EnergyTypeNet to predict whether a building is Residential, Commercial or Industrial from energy-consumption and building-attribute data. The core idea was to go beyond simply applying sklearn models and implement several classifiers from scratch so I could understand what is happening inside the learning process. I originally built three custom NumPy models: an attention-weighted nearest-neighbor classifier using exponential kernel weighting, a One-vs-Rest logistic regression trained with gradient descent and L2 regularization, and a multiclass Softmax regression with a joint weight matrix and categorical cross-entropy loss. I later extended this into a broader advanced classical model suite with custom decision trees, SVM, Naive Bayes variants and Bayesian linear regression. I also added a regularization deep-dive notebook covering Ridge, Lasso, ElasticNet and regularized logistic regression.
 
 On top of those custom models, I trained sklearn Logistic Regression, MLP and XGBoost baselines, then compared the full model set with 5-fold stratified cross-validation, holdout evaluation, confusion matrices, ROC/AUC curves, precision-recall curves and learning curves. I also added soft-voting and stacking ensembles to test whether combining Logistic Regression, MLP and XGBoost could improve performance over a single model. The project is packaged like a real machine-learning system: it includes MLflow experiment tracking, a reproducible training script, saved model artifacts, a FastAPI prediction service, Docker deployment support, GitHub Actions CI and a Streamlit dashboard.
 
@@ -16,6 +16,7 @@ The research part answers a specific question I had: is the accuracy ceiling cau
 - Compare custom classifiers against sklearn, neural-network and XGBoost baselines.
 - Train soft-voting and stacking ensembles.
 - Run feature engineering, feature selection, decision-boundary and model-diagnostic notebooks.
+- Study regularization with Ridge, Lasso, ElasticNet and regularized logistic regression experiments.
 - Train and serialize the best model with `joblib`.
 - Serve predictions through a FastAPI endpoint.
 - Explore results through a Streamlit dashboard.
@@ -66,6 +67,10 @@ Custom models implemented from scratch:
 | `MultinomialNaiveBayes`        | NumPy                                        | Count-feature Naive Bayes for text or frequency data                        |
 | `BernoulliNaiveBayes`          | NumPy                                        | Binary-feature Naive Bayes with optional thresholding                       |
 | `BayesianLinearRegression`     | NumPy                                        | Bayesian regression with predictive mean and variance                       |
+| `RidgeRegressionCustom`        | NumPy                                        | Closed-form L2-regularized regression with an unregularized intercept       |
+| `LassoRegressionCustom`        | NumPy                                        | Coordinate-descent L1 regression for sparse feature selection               |
+| `ElasticNetCustom`             | NumPy                                        | Coordinate-descent regression combining L1 and L2 penalties                 |
+| `RegularizedLogisticRegression` | NumPy                                       | One-vs-Rest logistic regression with none, L1, L2 or ElasticNet penalties   |
 
 Production training candidates in `src/train.py`:
 
@@ -109,6 +114,29 @@ The advanced suite includes:
 - additional tests for the new custom estimators
 
 The purpose of this branch is to make the project stronger as a learning and portfolio project by showing how several major model families work internally: tree-based learning, margin-based classification, probabilistic classification and Bayesian regression.
+
+---
+
+## Regularization Suite
+
+The `regularization-suite` branch adds a focused regularization study on top of the advanced classical models. Notebook 11 compares custom NumPy implementations against sklearn references and explains how penalties change model complexity, coefficient size and feature sparsity.
+
+The regularization suite includes:
+
+- Ridge regression with a closed-form L2-regularized solution
+- Lasso regression with coordinate descent and L1 sparsity
+- ElasticNet regression with combined L1 and L2 penalties
+- regularized One-vs-Rest logistic regression with `none`, `l1`, `l2` and `elasticnet` penalty modes
+- coefficient-path visualizations for Lasso and ElasticNet
+- EnergyTypeNet regression and classification sanity checks
+- tests confirming the custom models learn expected patterns and match sklearn behavior where appropriate
+
+Key notebook findings:
+
+- High-degree polynomial regression lowers training error but worsens test error, demonstrating overfitting.
+- Custom Ridge, Lasso and ElasticNet match sklearn predictions on the EnergyTypeNet regression setup at displayed precision.
+- ElasticNet is slightly strongest on the EnergyTypeNet regression sanity check, but Ridge and Lasso are very close.
+- On the two-feature building-type classification task, strong regularization can underfit because the feature space is already limited.
 
 ---
 
@@ -201,6 +229,7 @@ notebooks/
   08_decision_trees.ipynb
   09_svm.ipynb
   10_probabilistic_framework.ipynb
+  11_regularization.ipynb
 
 src/
   api.py                             FastAPI prediction service
@@ -358,7 +387,7 @@ Expected current result:
 
 ```text
 No broken requirements found.
-19 passed
+35 passed
 compileall passed
 ```
 
@@ -400,6 +429,8 @@ The core EnergyTypeNet task is intentionally honest about feature limitations. T
 
 The advanced model suite extends the project by comparing several learning families beyond the original models: tree-based models, margin-based classification, probabilistic classifiers and Bayesian regression.
 
+The regularization notebook extends this analysis by showing how L1, L2 and ElasticNet penalties control model complexity, coefficient size and sparsity. It compares custom Ridge, Lasso, ElasticNet and regularized logistic-regression implementations against sklearn references and connects the results back to EnergyTypeNet.
+
 The AI Dataset Assistant extends the project beyond this one dataset by making the workflow reusable for other tabular CSV files while keeping explanations grounded in computed statistics.
 
 ---
@@ -409,7 +440,10 @@ The AI Dataset Assistant extends the project beyond this one dataset by making t
 Good future improvements:
 
 - `deploy-streamlit`: add live app link and screenshots after deployment
-- `regularization-suite`: add L1/L2 regularization experiments, Ridge, Lasso and ElasticNet comparisons
+- `dimensionality-reduction`: add custom PCA, LDA, KernelPCA, t-SNE and optional UMAP experiments
+- `clustering-suite`: add K-Means, hierarchical clustering, DBSCAN and unsupervised evaluation metrics
+- `ensemble-extensions`: add Extra Trees, AdaBoost and broader ensemble diagnostics
 - `pytorch-tabular-models`: add custom PyTorch classifier/regressor and training curves
+- `refactor-models-package`: split `src/models.py` into focused modules after the model suite stabilizes
 - `dataset-chat-agent`: add chat history and richer follow-up questions
 - `hosted-llm-provider`: add optional API-key based hosted LLM streaming with usage controls

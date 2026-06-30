@@ -8,12 +8,16 @@ from src.models import (
     BernoulliNaiveBayes,
     DecisionTreeClassifierCustom,
     DecisionTreeRegressorCustom,
+    ElasticNetCustom,
     GaussianNaiveBayes,
+    LassoRegressionCustom,
     LinearRegressionGD,
     LinearRegressionNormal,
     LogisticRegressionSoftmax,
     MultinomialNaiveBayes,
     Perceptron,
+    RegularizedLogisticRegression,
+    RidgeRegressionCustom,
     SVMClassifierCustom,
 )
 
@@ -216,3 +220,67 @@ def test_bayesian_linear_regression_returns_mean_and_variance():
 
     np.testing.assert_allclose(mean, [11.0, 21.0], atol=0.5)
     assert np.all(variance > 0)
+
+
+def test_ridge_regression_custom_learns_simple_line():
+    X = np.arange(20, dtype=float).reshape(-1, 1)
+    y = 2.5 * X.ravel() - 3
+
+    model = RidgeRegressionCustom(alpha=0.01)
+    model.fit(X, y)
+
+    np.testing.assert_allclose(model.predict([[10.0]]), [22.0], atol=0.1)
+    assert model.score(X, y) > 0.99
+
+
+def test_lasso_regression_custom_selects_sparse_signal():
+    rng = np.random.RandomState(42)
+    X = rng.normal(size=(120, 3))
+    y = 4.0 * X[:, 0] + rng.normal(scale=0.05, size=120)
+
+    model = LassoRegressionCustom(alpha=0.05, max_iter=3000, tol=1e-7)
+    model.fit(X, y)
+
+    assert model.converged_
+    assert abs(model.coef_[0]) > 3.5
+    assert np.count_nonzero(np.abs(model.coef_[1:]) > 0.1) == 0
+    assert model.score(X, y) > 0.98
+
+
+def test_elastic_net_custom_handles_correlated_features():
+    rng = np.random.RandomState(42)
+    x0 = rng.normal(size=120)
+    X = np.column_stack([
+        x0,
+        x0 + rng.normal(scale=0.05, size=120),
+        rng.normal(size=120),
+    ])
+    y = 2.0 * x0 + rng.normal(scale=0.05, size=120)
+
+    model = ElasticNetCustom(alpha=0.01, l1_ratio=0.5, max_iter=3000, tol=1e-7)
+    model.fit(X, y)
+
+    assert model.converged_
+    assert model.score(X, y) > 0.95
+    assert np.count_nonzero(np.abs(model.coef_) > 1e-6) >= 1
+
+
+def test_regularized_logistic_regression_predicts_multiclass_blobs():
+    X, y = make_blobs(
+        n_samples=120,
+        centers=[[-3, -3], [0, 3], [3, -3]],
+        cluster_std=0.4,
+        random_state=42,
+    )
+
+    model = RegularizedLogisticRegression(
+        penalty='l2',
+        C=10.0,
+        learning_rate=0.05,
+        n_iterations=300,
+    )
+    model.fit(X, y)
+
+    assert model.loss_history_[0] > model.loss_history_[-1]
+    assert model.score(X, y) > 0.95
+    np.testing.assert_allclose(model.predict_proba(X[:5]).sum(axis=1), np.ones(5))
