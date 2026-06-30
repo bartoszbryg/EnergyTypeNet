@@ -2,6 +2,7 @@ import pandas as pd
 
 from src.automl import (
     answer_dataset_question,
+    cluster_analysis,
     generate_dataset_report,
     guess_task_type,
     prepare_dataset,
@@ -167,4 +168,19 @@ def test_answer_overfitting_question_uses_cv_test_gap():
     assert 'CV accuracy' in answer
     assert 'test accuracy' in answer
     assert 'overfitting' in answer.lower()
+
+
+def test_cluster_analysis_returns_labels_and_diagnostics():
+    df = pd.DataFrame({
+        'x': [-3, -2.8, -3.1, 0.0, 0.2, -0.1, 3.0, 3.2, 2.8],
+        'y': [-3, -3.2, -2.8, 3.0, 2.8, 3.2, -3.0, -2.9, -3.1],
+    })
+
+    result = cluster_analysis(df, max_k=4)
+
+    assert result['best_k'] in {2, 3, 4}
+    assert len(result['kmeans_labels']) == len(df)
+    assert len(result['gmm_labels']) == len(df)
+    assert set(result['silhouette_scores']).issubset({2, 3, 4})
+    assert len(result['figure'].axes) == 2
 
