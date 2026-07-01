@@ -1,6 +1,6 @@
-# EnergyTypeNet
+﻿# EnergyTypeNet
 
-I built EnergyTypeNet to predict whether a building is Residential, Commercial or Industrial from energy-consumption and building-attribute data. The core idea was to go beyond simply applying sklearn models and implement several algorithms from scratch so I could understand what is happening inside the learning process. I originally built three custom NumPy classifiers: an attention-weighted nearest-neighbor classifier using exponential kernel weighting, a One-vs-Rest logistic regression trained with gradient descent and L2 regularization, and a multiclass Softmax regression with a joint weight matrix and categorical cross-entropy loss. I later extended this into a broader advanced classical model suite with custom decision trees, SVM, Naive Bayes variants, Bayesian linear regression, regularized regression, dimensionality reduction and unsupervised clustering. The project now covers Ridge, Lasso, ElasticNet, regularized logistic regression, PCA, LDA, Kernel PCA, t-SNE, optional UMAP, K-Means, DBSCAN, Gaussian Mixture Models and agglomerative hierarchical clustering.
+I built EnergyTypeNet to predict whether a building is Residential, Commercial or Industrial from energy-consumption and building-attribute data. The core idea was to go beyond simply applying sklearn models and implement several algorithms from scratch so I could understand what is happening inside the learning process. I originally built three custom NumPy classifiers: an attention-weighted nearest-neighbor classifier using exponential kernel weighting, a One-vs-Rest logistic regression trained with gradient descent and L2 regularization, and a multiclass Softmax regression with a joint weight matrix and categorical cross-entropy loss. I later extended this into a broader advanced model suite with custom decision trees, SVM, Naive Bayes variants, Bayesian linear regression, regularized regression, dimensionality reduction, unsupervised clustering and a custom multi-layer perceptron trained with backpropagation. The project now covers Ridge, Lasso, ElasticNet, regularized logistic regression, PCA, LDA, Kernel PCA, t-SNE, optional UMAP, K-Means, DBSCAN, Gaussian Mixture Models, agglomerative hierarchical clustering, neural-network activation functions, initialization, optimizers, dropout, early stopping and MLP classification/regression.
 
 On top of those custom models, I trained sklearn Logistic Regression, MLP and XGBoost baselines, then compared the full model set with 5-fold stratified cross-validation, holdout evaluation, confusion matrices, ROC/AUC curves, precision-recall curves and learning curves. I also added soft-voting and stacking ensembles to test whether combining Logistic Regression, MLP and XGBoost could improve performance over a single model. The project is packaged like a real machine-learning system: it includes MLflow experiment tracking, a reproducible training script, saved model artifacts, a FastAPI prediction service, Docker deployment support, GitHub Actions CI and a Streamlit dashboard.
 
@@ -19,6 +19,7 @@ The research part answers a specific question I had: is the accuracy ceiling cau
 - Study regularization with Ridge, Lasso, ElasticNet and regularized logistic regression experiments.
 - Study dimensionality reduction with custom PCA, LDA, Kernel PCA, t-SNE and optional UMAP experiments.
 - Study unsupervised clustering with custom K-Means, DBSCAN, Gaussian Mixture Models and agglomerative clustering.
+- Study neural networks from scratch with custom NumPy backpropagation, optimizers, dropout and early stopping.
 - Train and serialize the best model with `joblib`.
 - Serve predictions through a FastAPI endpoint.
 - Explore results through a Streamlit dashboard.
@@ -80,6 +81,8 @@ Custom models implemented from scratch:
 | `DBSCANCustom`                 | NumPy                                        | Density-based clustering with core points, border points and noise labels   |
 | `GaussianMixtureModelCustom`   | NumPy                                        | EM-based Gaussian mixture model with soft cluster responsibilities          |
 | `AgglomerativeCustom`          | NumPy                                        | Hierarchical clustering with single, complete, average and Ward linkage     |
+| `ActivationFunctions`          | NumPy utility class                          | Neural-network activations and derivatives with plotting helper             |
+| `MLPCustom`                    | NumPy + sklearn-compatible estimator API     | Multi-layer perceptron with backprop, mini-batches, Adam, dropout and L2    |
 
 Production training candidates in `src/train.py`:
 
@@ -109,7 +112,7 @@ Library algorithms used across the notebooks:
 | Library / module                  | Algorithms used                                                                 |
 | --------------------------------- | ------------------------------------------------------------------------------- |
 | sklearn linear models             | Linear Regression, Logistic Regression, Ridge, Lasso, ElasticNet, Bayesian Ridge |
-| sklearn neural networks           | MLPClassifier                                                                    |
+| sklearn neural networks           | MLPClassifier, MLPRegressor through the AutoML assistant                         |
 | XGBoost                           | XGBClassifier                                                                    |
 | sklearn ensembles                 | VotingClassifier, StackingClassifier                                             |
 | sklearn trees                     | DecisionTreeClassifier, DecisionTreeRegressor                                    |
@@ -217,6 +220,32 @@ Key notebook findings:
 
 ---
 
+
+## Neural Networks from Scratch
+
+Notebook 14 adds a custom NumPy multi-layer perceptron that makes neural-network training explicit instead of hiding it behind a library call. It is intentionally separate from future PyTorch work: this notebook focuses on first principles, while a later PyTorch branch can focus on production-style framework usage.
+
+The neural-network suite includes:
+
+- custom `ActivationFunctions` for ReLU, sigmoid, tanh, leaky ReLU, ELU, softmax and linear activations
+- custom `MLPCustom` with configurable hidden layers and activation functions
+- mini-batch training with SGD, momentum and Adam optimizers
+- He, Xavier and random weight initialization experiments
+- dropout and L2 regularization
+- early stopping with validation loss tracking
+- classification and regression support
+- worked forward-pass and backpropagation examples with a finite-difference gradient check
+
+Key notebook findings:
+
+- Hidden layers solve XOR because they transform non-linearly separable inputs into a separable representation.
+- Initialization, activation choice, optimizer and batch size strongly affect training stability.
+- Backpropagation can be verified directly with numerical gradient checking.
+- Regularization should be justified by validation performance, not added only because it is common.
+- A NumPy MLP is a useful bridge between classical models and a future PyTorch implementation.
+
+---
+
 ## Dashboard
 
 Run the dashboard with:
@@ -309,6 +338,7 @@ notebooks/
   11_regularization.ipynb
   12_dimensionality_reduction.ipynb
   13_unsupervised_clustering.ipynb
+  14_neural_networks_from_scratch.ipynb
 
 src/
   api.py                             FastAPI prediction service
@@ -316,7 +346,7 @@ src/
   data.py                            Energy dataset loading and feature engineering
   evaluation.py                      Evaluation and plotting helpers
   llm_assistant.py                   Optional local Ollama prompt/streaming helpers
-  models.py                          Custom NumPy classifiers, regressors, projections and clustering models
+  models.py                          Custom NumPy classifiers, regressors, projections, clustering models and MLP
   predict.py                         CLI prediction helpers
   synthetic_experiment.py            Synthetic separability experiment
   train.py                           Production model training script
@@ -514,17 +544,22 @@ The dimensionality-reduction notebook adds PCA, LDA, Kernel PCA, t-SNE and optio
 
 The unsupervised clustering notebook adds K-Means, DBSCAN, Gaussian Mixture Models and agglomerative clustering. It shows that clustering can reveal useful geometric structure, but EnergyTypeNet clusters do not perfectly recover the building-type labels because unsupervised methods optimize feature-space grouping rather than supervised label agreement.
 
+The neural-network notebook adds a custom NumPy MLP with backpropagation, activation-function comparisons, initialization experiments, optimizer studies, dropout, L2 regularization, early stopping and regression support. It provides the from-scratch foundation before future PyTorch work.
+
 The AI Dataset Assistant extends the project beyond this one dataset by making the workflow reusable for other tabular CSV files while keeping explanations grounded in computed statistics.
 
 ---
 
 ## Suggested Next Branches
 
-Good future improvements:
+Planned future improvements:
 
-- `deploy-streamlit`: add live app link and screenshots after deployment
-- `ensemble-extensions`: add Extra Trees, AdaBoost and broader ensemble diagnostics
-- `pytorch-tabular-models`: add custom PyTorch classifier/regressor and training curves
-- `refactor-models-package`: split `src/models.py` into focused modules after the model suite stabilizes
-- `dataset-chat-agent`: add chat history and richer follow-up questions
-- `hosted-llm-provider`: add optional API-key based hosted LLM streaming with usage controls
+- `pytorch-tabular-models`: build the PyTorch tabular deep-learning suite after `neural-networks-scratch` is merged. Planned scope: tensors, autograd, `nn.Module`, custom `Dataset` / `DataLoader`, EnergyNet classifier, RegressionNet, losses, optimizers, schedulers, dropout, batch normalization, gradient clipping, early stopping, model saving/loading, hyperparameter tuning, and comparison against NumPy MLP and sklearn MLP.
+- `autoencoders-representation-learning`: add custom and PyTorch autoencoders for compression, reconstruction error, anomaly detection and learned tabular embeddings.
+- `cnn-foundations`: add convolutional neural-network fundamentals using generated/image-style data where CNN structure is actually meaningful.
+- `rnn-sequence-models`: add recurrent neural-network fundamentals for sequential data, including sequence preprocessing and temporal evaluation.
+- `ensemble-extensions`: add Extra Trees, AdaBoost and broader ensemble diagnostics.
+- `deploy-streamlit`: add a public Streamlit deployment link and screenshots after the app is stable.
+- `dataset-chat-agent`: add chat history and richer follow-up questions.
+- `hosted-llm-provider`: add optional API-key based hosted LLM streaming with usage controls.
+- `refactor-models-package`: split `src/models.py` into focused modules after the model suite stabilizes.

@@ -9,6 +9,7 @@ from sklearn.mixture import GaussianMixture
 from sklearn.model_selection import StratifiedKFold, cross_val_score
 
 from src.models import (
+    ActivationFunctions,
     AdalineGD,
     AgglomerativeCustom,
     AttentionClassifier,
@@ -25,6 +26,7 @@ from src.models import (
     LinearRegressionGD,
     LinearRegressionNormal,
     LogisticRegressionSoftmax,
+    MLPCustom,
     KernelPCACustom,
     LDACustom,
     MultinomialNaiveBayes,
@@ -425,3 +427,109 @@ def test_agglomerative_custom_matches_sklearn_linkages():
 
         assert custom.linkage_matrix_.shape == (X.shape[0] - 1, 4)
         assert adjusted_rand_score(reference_labels, custom_labels) > 0.90
+
+
+
+def test_activation_functions_shapes_and_softmax_rows():
+    z = np.array([[-1.0, 0.0, 1.0]])
+
+    assert ActivationFunctions.relu(z).shape == z.shape
+    assert ActivationFunctions.sigmoid(z).shape == z.shape
+    assert ActivationFunctions.tanh(z).shape == z.shape
+    assert ActivationFunctions.leaky_relu(z).shape == z.shape
+
+    proba = ActivationFunctions.softmax(z)
+    np.testing.assert_allclose(proba.sum(axis=1), np.ones(1))
+
+
+def test_mlp_custom_learns_xor():
+    X = np.array([
+        [0.0, 0.0],
+        [0.0, 1.0],
+        [1.0, 0.0],
+        [1.0, 1.0],
+    ])
+    y = np.array([0, 1, 1, 0])
+
+    model = MLPCustom(
+        hidden_layer_sizes=(4,),
+        activation='tanh',
+        learning_rate=0.05,
+        n_iterations=1200,
+        batch_size=4,
+        optimizer='adam',
+        weight_init='xavier',
+        random_state=42,
+    )
+    model.fit(X, y)
+
+    assert model.score(X, y) == 1.0
+    assert model.loss_history_[0] > model.loss_history_[-1]
+
+
+def test_mlp_custom_predict_proba_shape_and_sum():
+    X, y = make_blobs(
+        n_samples=90,
+        centers=[[-2, -2], [2, 2], [2, -2]],
+        cluster_std=0.5,
+        random_state=42,
+    )
+
+    model = MLPCustom(
+        hidden_layer_sizes=(12,),
+        activation='relu',
+        learning_rate=0.01,
+        n_iterations=120,
+        batch_size=16,
+        optimizer='adam',
+        random_state=42,
+    ).fit(X, y)
+    proba = model.predict_proba(X[:5])
+
+    assert proba.shape == (5, 3)
+    np.testing.assert_allclose(proba.sum(axis=1), np.ones(5), atol=1e-7)
+    assert model.score(X, y) > 0.9
+
+
+def test_mlp_custom_regression_score_positive():
+    rng = np.random.RandomState(42)
+    X = rng.normal(size=(120, 2))
+    y = 2.0 * X[:, 0] - 0.5 * X[:, 1] + 1.0
+
+    model = MLPCustom(
+        hidden_layer_sizes=(10,),
+        activation='tanh',
+        output_activation='linear',
+        task='regression',
+        learning_rate=0.01,
+        n_iterations=250,
+        batch_size=16,
+        optimizer='adam',
+        weight_init='xavier',
+        random_state=42,
+    ).fit(X, y)
+
+    assert model.score(X, y) > 0.9
+    assert model.loss_history_[0] > model.loss_history_[-1]
+
+
+def test_mlp_custom_early_stopping_records_validation_loss():
+    X, y = make_blobs(
+        n_samples=120,
+        centers=[[-2, -2], [2, 2]],
+        cluster_std=0.6,
+        random_state=42,
+    )
+
+    model = MLPCustom(
+        hidden_layer_sizes=(8,),
+        n_iterations=80,
+        batch_size=16,
+        optimizer='adam',
+        validation_fraction=0.2,
+        patience=5,
+        random_state=42,
+    ).fit(X, y)
+
+    assert len(model.val_loss_history_) > 0
+    assert len(model.loss_history_) == model.n_epochs_
