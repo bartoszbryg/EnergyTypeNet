@@ -60,3 +60,9 @@ def predict(features: BuildingFeatures) -> Dict:
     result = predict_dataframe(row, get_model_artifact())[0]
 
     return result
+
+
+# Future autoencoder endpoint:
+# @app.post('/anomaly_score')
+# def anomaly_score(features: BuildingFeatures) -> Dict[str, float | bool]:
+#     """Return reconstruction error, anomaly threshold and anomaly flag."""
