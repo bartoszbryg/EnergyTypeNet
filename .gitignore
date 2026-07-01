@@ -10,3 +10,4 @@ results/*
 models/
 .dvc/cache/
 .dvc/tmp/
+data/torchvision/
