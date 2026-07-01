@@ -1,6 +1,6 @@
 ﻿# EnergyTypeNet
 
-I built EnergyTypeNet to predict whether a building is Residential, Commercial or Industrial from energy-consumption and building-attribute data. The core idea was to go beyond simply applying sklearn models and implement several algorithms from scratch so I could understand what is happening inside the learning process. I originally built three custom NumPy classifiers: an attention-weighted nearest-neighbor classifier using exponential kernel weighting, a One-vs-Rest logistic regression trained with gradient descent and L2 regularization, and a multiclass Softmax regression with a joint weight matrix and categorical cross-entropy loss. I later extended this into a broader advanced model suite with custom decision trees, SVM, Naive Bayes variants, Bayesian linear regression, regularized regression, dimensionality reduction, unsupervised clustering and a custom multi-layer perceptron trained with backpropagation. The project now covers Ridge, Lasso, ElasticNet, regularized logistic regression, PCA, LDA, Kernel PCA, t-SNE, optional UMAP, K-Means, DBSCAN, Gaussian Mixture Models, agglomerative hierarchical clustering, neural-network activation functions, initialization, optimizers, dropout, early stopping and MLP classification/regression.
+I built EnergyTypeNet to predict whether a building is Residential, Commercial or Industrial from energy-consumption and building-attribute data. The core idea was to go beyond simply applying sklearn models and implement several algorithms from scratch so I could understand what is happening inside the learning process. I originally built three custom NumPy classifiers: an attention-weighted nearest-neighbor classifier using exponential kernel weighting, a One-vs-Rest logistic regression trained with gradient descent and L2 regularization, and a multiclass Softmax regression with a joint weight matrix and categorical cross-entropy loss. I later extended this into a broader advanced model suite with custom decision trees, SVM, Naive Bayes variants, Bayesian linear regression, regularized regression, dimensionality reduction, unsupervised clustering, a custom multi-layer perceptron trained with backpropagation and a PyTorch tabular deep-learning workflow. The project now covers Ridge, Lasso, ElasticNet, regularized logistic regression, PCA, LDA, Kernel PCA, t-SNE, optional UMAP, K-Means, DBSCAN, Gaussian Mixture Models, agglomerative hierarchical clustering, neural-network activation functions, initialization, optimizers, dropout, early stopping, MLP classification/regression and PyTorch `nn.Module` training loops.
 
 On top of those custom models, I trained sklearn Logistic Regression, MLP and XGBoost baselines, then compared the full model set with 5-fold stratified cross-validation, holdout evaluation, confusion matrices, ROC/AUC curves, precision-recall curves and learning curves. I also added soft-voting and stacking ensembles to test whether combining Logistic Regression, MLP and XGBoost could improve performance over a single model. The project is packaged like a real machine-learning system: it includes MLflow experiment tracking, a reproducible training script, saved model artifacts, a FastAPI prediction service, Docker deployment support, GitHub Actions CI and a Streamlit dashboard.
 
@@ -20,6 +20,7 @@ The research part answers a specific question I had: is the accuracy ceiling cau
 - Study dimensionality reduction with custom PCA, LDA, Kernel PCA, t-SNE and optional UMAP experiments.
 - Study unsupervised clustering with custom K-Means, DBSCAN, Gaussian Mixture Models and agglomerative clustering.
 - Study neural networks from scratch with custom NumPy backpropagation, optimizers, dropout and early stopping.
+- Study PyTorch tabular deep learning with tensors, autograd, `nn.Module`, `Dataset` / `DataLoader`, optimizers, schedulers, regularization and model saving.
 - Train and serialize the best model with `joblib`.
 - Serve predictions through a FastAPI endpoint.
 - Explore results through a Streamlit dashboard.
@@ -121,6 +122,7 @@ Library algorithms used across the notebooks:
 | sklearn dimensionality reduction  | PCA, LinearDiscriminantAnalysis, KernelPCA, TSNE                                 |
 | umap-learn                        | UMAP, optional if installed                                                      |
 | sklearn clustering and mixtures   | KMeans, DBSCAN, GaussianMixture, AgglomerativeClustering                         |
+| PyTorch                           | tensors, autograd, nn.Module MLPs, DataLoader, optimizers, schedulers, losses    |
 
 ---
 
@@ -223,7 +225,7 @@ Key notebook findings:
 
 ## Neural Networks from Scratch
 
-Notebook 14 adds a custom NumPy multi-layer perceptron that makes neural-network training explicit instead of hiding it behind a library call. It is intentionally separate from future PyTorch work: this notebook focuses on first principles, while a later PyTorch branch can focus on production-style framework usage.
+Notebook 14 adds a custom NumPy multi-layer perceptron that makes neural-network training explicit instead of hiding it behind a library call. It is intentionally separate from the PyTorch work in Notebook 15: this notebook focuses on first principles, while the PyTorch notebook focuses on production-style framework usage.
 
 The neural-network suite includes:
 
@@ -242,7 +244,34 @@ Key notebook findings:
 - Initialization, activation choice, optimizer and batch size strongly affect training stability.
 - Backpropagation can be verified directly with numerical gradient checking.
 - Regularization should be justified by validation performance, not added only because it is common.
-- A NumPy MLP is a useful bridge between classical models and a future PyTorch implementation.
+- A NumPy MLP is a useful bridge between classical models and the PyTorch implementation in Notebook 15.
+
+---
+
+## PyTorch Tabular Models
+
+Notebook 15 adds a PyTorch implementation layer on top of the custom NumPy neural-network foundation. It keeps EnergyTypeNet as the primary dataset and uses small synthetic examples only where tensor and autograd mechanics are easier to understand in isolation.
+
+The PyTorch suite includes:
+
+- tensor creation, dtype conversion, broadcasting, indexing and device transfer
+- autograd examples with manual derivative checks and a custom ReLU `torch.autograd.Function`
+- `nn.Module` implementations with `EnergyNet` for classification and `RegressionNet` for regression
+- activation-function and weight-initialization demonstrations
+- classification and regression loss-function examples
+- custom `Dataset` and `DataLoader` wrappers for EnergyTypeNet
+- optimizer comparisons across SGD, momentum SGD, RMSprop, Adam, AdamW and Adagrad
+- learning-rate scheduler comparisons and warm-restart visualization
+- dropout, batch normalization, L1/L2 regularization and gradient clipping
+- production-style training loop with early stopping, model checkpointing and `state_dict` saving/loading
+- hyperparameter tuning, learning curves and comparison against the NumPy MLP and sklearn MLP
+- PyTorch regression on EnergyTypeNet plus a supplementary California Housing / synthetic fallback benchmark
+
+Key notebook goals:
+
+- connect Notebook 14's from-scratch backpropagation to PyTorch's autograd engine
+- show when PyTorch gives more control than sklearn for neural-network experiments
+- establish a reusable deep-learning foundation for future autoencoder, CNN and RNN branches
 
 ---
 
@@ -339,6 +368,7 @@ notebooks/
   12_dimensionality_reduction.ipynb
   13_unsupervised_clustering.ipynb
   14_neural_networks_from_scratch.ipynb
+  15_pytorch_introduction.ipynb
 
 src/
   api.py                             FastAPI prediction service
@@ -544,7 +574,9 @@ The dimensionality-reduction notebook adds PCA, LDA, Kernel PCA, t-SNE and optio
 
 The unsupervised clustering notebook adds K-Means, DBSCAN, Gaussian Mixture Models and agglomerative clustering. It shows that clustering can reveal useful geometric structure, but EnergyTypeNet clusters do not perfectly recover the building-type labels because unsupervised methods optimize feature-space grouping rather than supervised label agreement.
 
-The neural-network notebook adds a custom NumPy MLP with backpropagation, activation-function comparisons, initialization experiments, optimizer studies, dropout, L2 regularization, early stopping and regression support. It provides the from-scratch foundation before future PyTorch work.
+The neural-network notebook adds a custom NumPy MLP with backpropagation, activation-function comparisons, initialization experiments, optimizer studies, dropout, L2 regularization, early stopping and regression support. It provides the from-scratch foundation for the PyTorch notebook.
+
+The PyTorch notebook then rebuilds the neural-network workflow with framework tools: tensors, autograd, `nn.Module`, custom datasets, dataloaders, losses, optimizers, schedulers, regularization, checkpointing, hyperparameter tuning and tabular classification/regression experiments.
 
 The AI Dataset Assistant extends the project beyond this one dataset by making the workflow reusable for other tabular CSV files while keeping explanations grounded in computed statistics.
 
@@ -554,7 +586,6 @@ The AI Dataset Assistant extends the project beyond this one dataset by making t
 
 Planned future improvements:
 
-- `pytorch-tabular-models`: build the PyTorch tabular deep-learning suite after `neural-networks-scratch` is merged. Planned scope: tensors, autograd, `nn.Module`, custom `Dataset` / `DataLoader`, EnergyNet classifier, RegressionNet, losses, optimizers, schedulers, dropout, batch normalization, gradient clipping, early stopping, model saving/loading, hyperparameter tuning, and comparison against NumPy MLP and sklearn MLP.
 - `autoencoders-representation-learning`: add custom and PyTorch autoencoders for compression, reconstruction error, anomaly detection and learned tabular embeddings.
 - `cnn-foundations`: add convolutional neural-network fundamentals using generated/image-style data where CNN structure is actually meaningful.
 - `rnn-sequence-models`: add recurrent neural-network fundamentals for sequential data, including sequence preprocessing and temporal evaluation.
