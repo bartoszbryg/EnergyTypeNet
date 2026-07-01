@@ -7,5 +7,6 @@ mlflow.db
 mlruns/
 results/*
 !results/.gitkeep
+models/
 .dvc/cache/
 .dvc/tmp/
