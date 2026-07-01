@@ -1,6 +1,6 @@
 ﻿# EnergyTypeNet
 
-I built EnergyTypeNet to predict whether a building is Residential, Commercial or Industrial from energy-consumption and building-attribute data. The core idea was to go beyond simply applying sklearn models and implement several algorithms from scratch so I could understand what is happening inside the learning process. I originally built three custom NumPy classifiers: an attention-weighted nearest-neighbor classifier using exponential kernel weighting, a One-vs-Rest logistic regression trained with gradient descent and L2 regularization, and a multiclass Softmax regression with a joint weight matrix and categorical cross-entropy loss. I later extended this into a broader advanced model suite with custom decision trees, SVM, Naive Bayes variants, Bayesian linear regression, regularized regression, dimensionality reduction, unsupervised clustering, a custom multi-layer perceptron trained with backpropagation and a PyTorch tabular deep-learning workflow. The project now covers Ridge, Lasso, ElasticNet, regularized logistic regression, PCA, LDA, Kernel PCA, t-SNE, optional UMAP, K-Means, DBSCAN, Gaussian Mixture Models, agglomerative hierarchical clustering, neural-network activation functions, initialization, optimizers, dropout, early stopping, MLP classification/regression, PyTorch `nn.Module` training loops and autoencoder-based reconstruction/anomaly detection.
+I built EnergyTypeNet to predict whether a building is Residential, Commercial or Industrial from energy-consumption and building-attribute data. The core idea was to go beyond simply applying sklearn models and implement several algorithms from scratch so I could understand what is happening inside the learning process. I originally built three custom NumPy classifiers: an attention-weighted nearest-neighbor classifier using exponential kernel weighting, a One-vs-Rest logistic regression trained with gradient descent and L2 regularization, and a multiclass Softmax regression with a joint weight matrix and categorical cross-entropy loss. I later extended this into a broader advanced model suite with custom decision trees, SVM, Naive Bayes variants, Bayesian linear regression, regularized regression, dimensionality reduction, unsupervised clustering, a custom multi-layer perceptron trained with backpropagation and a PyTorch tabular deep-learning workflow. The project now covers Ridge, Lasso, ElasticNet, regularized logistic regression, PCA, LDA, Kernel PCA, t-SNE, optional UMAP, K-Means, DBSCAN, Gaussian Mixture Models, agglomerative hierarchical clustering, neural-network activation functions, initialization, optimizers, dropout, early stopping, MLP classification/regression, PyTorch `nn.Module` training loops, autoencoder-based reconstruction/anomaly detection and convolutional neural-network foundations on image data.
 
 On top of those custom models, I trained sklearn Logistic Regression, MLP and XGBoost baselines, then compared the full model set with 5-fold stratified cross-validation, holdout evaluation, confusion matrices, ROC/AUC curves, precision-recall curves and learning curves. I also added soft-voting and stacking ensembles to test whether combining Logistic Regression, MLP and XGBoost could improve performance over a single model. The project is packaged like a real machine-learning system: it includes MLflow experiment tracking, a reproducible training script, saved model artifacts, a FastAPI prediction service, Docker deployment support, GitHub Actions CI and a Streamlit dashboard.
 
@@ -22,6 +22,7 @@ The research part answers a specific question I had: is the accuracy ceiling cau
 - Study neural networks from scratch with custom NumPy backpropagation, optimizers, dropout and early stopping.
 - Study PyTorch tabular deep learning with tensors, autograd, `nn.Module`, `Dataset` / `DataLoader`, optimizers, schedulers, regularization and model saving.
 - Use PyTorch autoencoders for tabular compression, denoising, latent-space visualization and anomaly scoring based on reconstruction error.
+- Study convolutional neural networks with PyTorch using image data where local spatial structure is meaningful.
 - Train and serialize the best model with `joblib`.
 - Serve predictions through a FastAPI endpoint.
 - Explore results through a Streamlit dashboard.
@@ -123,7 +124,7 @@ Library algorithms used across the notebooks:
 | sklearn dimensionality reduction  | PCA, LinearDiscriminantAnalysis, KernelPCA, TSNE                                 |
 | umap-learn                        | UMAP, optional if installed                                                      |
 | sklearn clustering and mixtures   | KMeans, DBSCAN, GaussianMixture, AgglomerativeClustering                         |
-| PyTorch                           | tensors, autograd, nn.Module MLPs, DataLoader, optimizers, schedulers, losses, autoencoders, VAEs |
+| PyTorch                           | tensors, autograd, nn.Module MLPs, DataLoader, optimizers, schedulers, losses, autoencoders, VAEs, Conv2d CNNs |
 
 ---
 
@@ -284,7 +285,32 @@ Key notebook goals:
 
 - connect Notebook 14's from-scratch backpropagation to PyTorch's autograd engine
 - show when PyTorch gives more control than sklearn for neural-network experiments
-- establish a reusable deep-learning foundation for future CNN and RNN branches
+- establish a reusable deep-learning foundation for CNN and RNN branches
+
+---
+
+## PyTorch CNN Foundations
+
+Notebook 17 adds convolutional neural-network foundations with PyTorch. Because EnergyTypeNet is a tabular dataset without natural spatial neighborhoods, the main CNN experiments use sklearn's built-in `load_digits()` image dataset, while EnergyTypeNet is used as the scientific counterexample explaining why CNNs should not be forced onto unordered tabular columns.
+
+The CNN suite includes:
+
+- 1D convolution from scratch with NumPy
+- PyTorch `Conv2d` and `MaxPool2d` shape demonstrations
+- a compact `DigitCNN` with convolution, batch normalization, pooling, dropout and fully connected layers
+- CNN training loops with Adam and cross-entropy loss
+- learned filter and feature-map visualization
+- CNN size and regularization comparisons
+- a guarded optional MNIST section that skips cleanly when local MNIST data is unavailable
+- CNN vs flat MLP comparisons on image data
+- an explicit discussion of why CNNs are appropriate for images but not the primary model family for EnergyTypeNet tabular rows
+
+Key notebook findings:
+
+- CNNs work well when nearby inputs form meaningful local patterns, such as strokes in handwritten digits.
+- Feature maps make intermediate CNN representations more interpretable than ordinary dense-layer activations.
+- Batch normalization, dropout and simple augmentation are useful regularization tools, but small datasets can make differences modest.
+- EnergyTypeNet should remain tabular-first; CNNs are included as a deep-learning foundations study rather than a production building-type classifier.
 
 ---
 
@@ -383,6 +409,7 @@ notebooks/
   14_neural_networks_from_scratch.ipynb
   15_pytorch_introduction.ipynb
   16_autoencoders.ipynb
+  17_convolutional_neural_networks.ipynb
 
 src/
   api.py                             FastAPI prediction service
@@ -540,7 +567,7 @@ Expected current result:
 
 ```text
 No broken requirements found.
-39 passed
+49 passed
 compileall passed
 ```
 
@@ -594,6 +621,8 @@ The PyTorch notebook then rebuilds the neural-network workflow with framework to
 
 The autoencoder notebook adds unsupervised PyTorch representation learning. It uses EnergyTypeNet reconstruction error for compression studies, denoising, latent-space analysis and one-class anomaly detection, showing how unusual building patterns can be flagged without training directly on anomaly labels.
 
+The CNN notebook adds convolutional neural-network foundations on image data using sklearn's built-in digits dataset. It keeps the project scientifically honest by explaining that CNNs are appropriate for spatial image structure, while EnergyTypeNet itself should remain modeled with tabular-first methods.
+
 The AI Dataset Assistant extends the project beyond this one dataset by making the workflow reusable for other tabular CSV files while keeping explanations grounded in computed statistics.
 
 ---
@@ -602,9 +631,8 @@ The AI Dataset Assistant extends the project beyond this one dataset by making t
 
 Planned future improvements:
 
-- `cnn-foundations`: add convolutional neural-network fundamentals using generated/image-style data where CNN structure is actually meaningful.
 - `rnn-sequence-models`: add recurrent neural-network fundamentals for sequential data, including sequence preprocessing and temporal evaluation.
-- `ensemble-extensions`: add Extra Trees, AdaBoost and broader ensemble diagnostics.
+- `ensemble-extensions`: extend beyond existing voting/stacking with bagging, AdaBoost, Extra Trees, histogram gradient boosting and broader ensemble diagnostics.
 - `deploy-streamlit`: add a public Streamlit deployment link and screenshots after the app is stable.
 - `dataset-chat-agent`: add chat history and richer follow-up questions.
 - `hosted-llm-provider`: add optional API-key based hosted LLM streaming with usage controls.
