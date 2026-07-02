@@ -1,6 +1,6 @@
 ﻿# EnergyTypeNet
 
-I built EnergyTypeNet to predict whether a building is Residential, Commercial or Industrial from energy-consumption and building-attribute data. The core idea was to go beyond simply applying sklearn models and implement several algorithms from scratch so I could understand what is happening inside the learning process. I originally built three custom NumPy classifiers: an attention-weighted nearest-neighbor classifier using exponential kernel weighting, a One-vs-Rest logistic regression trained with gradient descent and L2 regularization, and a multiclass Softmax regression with a joint weight matrix and categorical cross-entropy loss. I later extended this into a broader advanced model suite with custom decision trees, SVM, Naive Bayes variants, Bayesian linear regression, regularized regression, dimensionality reduction, unsupervised clustering, a custom multi-layer perceptron trained with backpropagation and a PyTorch tabular deep-learning workflow. The project now covers Ridge, Lasso, ElasticNet, regularized logistic regression, PCA, LDA, Kernel PCA, t-SNE, optional UMAP, K-Means, DBSCAN, Gaussian Mixture Models, agglomerative hierarchical clustering, neural-network activation functions, initialization, optimizers, dropout, early stopping, MLP classification/regression, PyTorch `nn.Module` training loops, autoencoder-based reconstruction/anomaly detection and convolutional neural-network foundations on image data.
+I built EnergyTypeNet to predict whether a building is Residential, Commercial or Industrial from energy-consumption and building-attribute data. The core idea was to go beyond simply applying sklearn models and implement several algorithms from scratch so I could understand what is happening inside the learning process. I originally built three custom NumPy classifiers: an attention-weighted nearest-neighbor classifier using exponential kernel weighting, a One-vs-Rest logistic regression trained with gradient descent and L2 regularization, and a multiclass Softmax regression with a joint weight matrix and categorical cross-entropy loss. I later extended this into a broader advanced model suite with custom decision trees, SVM, Naive Bayes variants, Bayesian linear regression, regularized regression, dimensionality reduction, unsupervised clustering, a custom multi-layer perceptron trained with backpropagation and a PyTorch tabular deep-learning workflow. The project now covers Ridge, Lasso, ElasticNet, regularized logistic regression, PCA, LDA, Kernel PCA, t-SNE, optional UMAP, K-Means, DBSCAN, Gaussian Mixture Models, agglomerative hierarchical clustering, neural-network activation functions, initialization, optimizers, dropout, early stopping, MLP classification/regression, PyTorch `nn.Module` training loops, autoencoder-based reconstruction/anomaly detection, convolutional neural-network foundations on image data and recurrent neural-network foundations for sequential data.
 
 On top of those custom models, I trained sklearn Logistic Regression, MLP and XGBoost baselines, then compared the full model set with 5-fold stratified cross-validation, holdout evaluation, confusion matrices, ROC/AUC curves, precision-recall curves and learning curves. I also added soft-voting and stacking ensembles to test whether combining Logistic Regression, MLP and XGBoost could improve performance over a single model. The project is packaged like a real machine-learning system: it includes MLflow experiment tracking, a reproducible training script, saved model artifacts, a FastAPI prediction service, Docker deployment support, GitHub Actions CI and a Streamlit dashboard.
 
@@ -23,6 +23,7 @@ The research part answers a specific question I had: is the accuracy ceiling cau
 - Study PyTorch tabular deep learning with tensors, autograd, `nn.Module`, `Dataset` / `DataLoader`, optimizers, schedulers, regularization and model saving.
 - Use PyTorch autoencoders for tabular compression, denoising, latent-space visualization and anomaly scoring based on reconstruction error.
 - Study convolutional neural networks with PyTorch using image data where local spatial structure is meaningful.
+- Study recurrent neural networks with NumPy RNN cells, PyTorch RNN/LSTM/GRU models, sequence generation and sequence classification.
 - Train and serialize the best model with `joblib`.
 - Serve predictions through a FastAPI endpoint.
 - Explore results through a Streamlit dashboard.
@@ -124,7 +125,7 @@ Library algorithms used across the notebooks:
 | sklearn dimensionality reduction  | PCA, LinearDiscriminantAnalysis, KernelPCA, TSNE                                 |
 | umap-learn                        | UMAP, optional if installed                                                      |
 | sklearn clustering and mixtures   | KMeans, DBSCAN, GaussianMixture, AgglomerativeClustering                         |
-| PyTorch                           | tensors, autograd, nn.Module MLPs, DataLoader, optimizers, schedulers, losses, autoencoders, VAEs, Conv2d CNNs |
+| PyTorch                           | tensors, autograd, nn.Module MLPs, DataLoader, optimizers, schedulers, losses, autoencoders, VAEs, Conv2d CNNs, RNNs, LSTMs, GRUs, bidirectional LSTMs, attention |
 
 ---
 
@@ -314,6 +315,31 @@ Key notebook findings:
 
 ---
 
+## PyTorch RNN Foundations
+
+Notebook 18 adds recurrent neural-network foundations for sequence data. The main sequence experiments use synthetic sine waves and synthetic sequence classes because those datasets have real temporal structure. EnergyTypeNet is included as an educational row-order forecasting demo, with an explicit caveat that the original building dataset has no timestamps and should not be treated as a true time series without chronological measurements.
+
+The RNN suite includes:
+
+- a plain PyTorch recurrent cell used to visualize vanishing gradients
+- a custom NumPy `RNNCellNumpy` trained with manual backpropagation through time
+- NumPy LSTM and GRU cell implementations verified against PyTorch cells
+- PyTorch RNN, LSTM and GRU regressors for one-step sine forecasting
+- multi-step LSTM forecasting and autoregressive sequence generation
+- a bidirectional LSTM classifier for synthetic sequence classes
+- an EnergyTypeNet forecasting demo using sliding windows over row order
+- stacked, bidirectional and attention-augmented LSTM comparisons
+- gradient-flow diagnostics across sequence lengths
+
+Key notebook findings:
+
+- Plain RNNs expose the recurrence mechanism clearly but are most vulnerable to vanishing gradients.
+- LSTM and GRU gates help preserve useful training signal, especially as sequence length grows.
+- Bidirectional LSTMs are useful for whole-sequence classification when future context is available.
+- EnergyTypeNet remains a tabular-first dataset; the RNN experiment demonstrates sequence tooling rather than a production temporal forecast.
+
+---
+
 ## Dashboard
 
 Run the dashboard with:
@@ -410,6 +436,7 @@ notebooks/
   15_pytorch_introduction.ipynb
   16_autoencoders.ipynb
   17_convolutional_neural_networks.ipynb
+  18_recurrent_neural_networks.ipynb
 
 src/
   api.py                             FastAPI prediction service
@@ -623,6 +650,8 @@ The autoencoder notebook adds unsupervised PyTorch representation learning. It u
 
 The CNN notebook adds convolutional neural-network foundations on image data using sklearn's built-in digits dataset. It keeps the project scientifically honest by explaining that CNNs are appropriate for spatial image structure, while EnergyTypeNet itself should remain modeled with tabular-first methods.
 
+The RNN notebook adds recurrent neural-network foundations using synthetic sequence data and an educational EnergyTypeNet row-order forecasting demo. It shows why hidden-state models, LSTM gates, GRU gates, bidirectionality and attention matter for sequential problems, while also documenting that EnergyTypeNet itself has no true timestamped ordering.
+
 The AI Dataset Assistant extends the project beyond this one dataset by making the workflow reusable for other tabular CSV files while keeping explanations grounded in computed statistics.
 
 ---
@@ -631,7 +660,6 @@ The AI Dataset Assistant extends the project beyond this one dataset by making t
 
 Planned future improvements:
 
-- `rnn-sequence-models`: add recurrent neural-network fundamentals for sequential data, including sequence preprocessing and temporal evaluation.
 - `ensemble-extensions`: extend beyond existing voting/stacking with bagging, AdaBoost, Extra Trees, histogram gradient boosting and broader ensemble diagnostics.
 - `deploy-streamlit`: add a public Streamlit deployment link and screenshots after the app is stable.
 - `dataset-chat-agent`: add chat history and richer follow-up questions.
