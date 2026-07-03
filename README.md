@@ -1,8 +1,8 @@
 ﻿# EnergyTypeNet
 
-I built EnergyTypeNet to predict whether a building is Residential, Commercial or Industrial from energy-consumption and building-attribute data. The core idea was to go beyond simply applying sklearn models and implement several algorithms from scratch so I could understand what is happening inside the learning process. I originally built three custom NumPy classifiers: an attention-weighted nearest-neighbor classifier using exponential kernel weighting, a One-vs-Rest logistic regression trained with gradient descent and L2 regularization, and a multiclass Softmax regression with a joint weight matrix and categorical cross-entropy loss. I later extended this into a broader advanced model suite with custom decision trees, SVM, Naive Bayes variants, Bayesian linear regression, regularized regression, dimensionality reduction, unsupervised clustering, a custom multi-layer perceptron trained with backpropagation and a PyTorch tabular deep-learning workflow. The project now covers Ridge, Lasso, ElasticNet, regularized logistic regression, PCA, LDA, Kernel PCA, t-SNE, optional UMAP, K-Means, DBSCAN, Gaussian Mixture Models, agglomerative hierarchical clustering, neural-network activation functions, initialization, optimizers, dropout, early stopping, MLP classification/regression, PyTorch `nn.Module` training loops, autoencoder-based reconstruction/anomaly detection, convolutional neural-network foundations on image data and recurrent neural-network foundations for sequential data.
+I built EnergyTypeNet to predict whether a building is Residential, Commercial or Industrial from energy-consumption and building-attribute data. The core idea was to go beyond simply applying sklearn models and implement several algorithms from scratch so I could understand what is happening inside the learning process. I originally built three custom NumPy classifiers: an attention-weighted nearest-neighbor classifier using exponential kernel weighting, a One-vs-Rest logistic regression trained with gradient descent and L2 regularization, and a multiclass Softmax regression with a joint weight matrix and categorical cross-entropy loss. I later extended this into a broader advanced model suite with custom decision trees, SVM, Naive Bayes variants, Bayesian linear regression, regularized regression, dimensionality reduction, unsupervised clustering, custom Bagging and AdaBoost ensembles, a custom multi-layer perceptron trained with backpropagation and a PyTorch tabular deep-learning workflow. The project now covers Ridge, Lasso, ElasticNet, regularized logistic regression, PCA, LDA, Kernel PCA, t-SNE, optional UMAP, K-Means, DBSCAN, Gaussian Mixture Models, agglomerative hierarchical clustering, ensemble diversity diagnostics, Bagging, AdaBoost, Extra Trees, histogram gradient boosting, neural-network activation functions, initialization, optimizers, dropout, early stopping, MLP classification/regression, PyTorch `nn.Module` training loops, autoencoder-based reconstruction/anomaly detection, convolutional neural-network foundations on image data and recurrent neural-network foundations for sequential data.
 
-On top of those custom models, I trained sklearn Logistic Regression, MLP and XGBoost baselines, then compared the full model set with 5-fold stratified cross-validation, holdout evaluation, confusion matrices, ROC/AUC curves, precision-recall curves and learning curves. I also added soft-voting and stacking ensembles to test whether combining Logistic Regression, MLP and XGBoost could improve performance over a single model. The project is packaged like a real machine-learning system: it includes MLflow experiment tracking, a reproducible training script, saved model artifacts, a FastAPI prediction service, Docker deployment support, GitHub Actions CI and a Streamlit dashboard.
+On top of those custom models, I trained sklearn Logistic Regression, MLP and XGBoost baselines, then compared the full model set with 5-fold stratified cross-validation, holdout evaluation, confusion matrices, ROC/AUC curves, precision-recall curves and learning curves. I also added soft-voting, stacking, custom Bagging, custom AdaBoost, Extra Trees and HistGradientBoosting experiments to test when combining learners improves performance over a single model. The project is packaged like a real machine-learning system: it includes MLflow experiment tracking, a reproducible training script, saved model artifacts, a FastAPI prediction service, Docker deployment support, GitHub Actions CI and a Streamlit dashboard.
 
 The project also grew into a reusable AutoML-style tool through the AI Dataset Assistant. Instead of working only on the original building-energy dataset, the dashboard can now accept a custom CSV file, profile the dataset, detect missing values and data types, suggest possible target columns, infer whether the task should be classification or regression, recommend usable feature columns, rank features with mutual information, compare all selected features against a compact feature set, train multiple baseline models and generate a short natural-language dataset report grounded in computed results. It also has a deterministic dataset question-answering assistant and optional local LLM streaming through Ollama, so the explanations can feel more natural while still staying tied to the actual model outputs.
 
@@ -15,6 +15,7 @@ The research part answers a specific question I had: is the accuracy ceiling cau
 - Predict building type from energy-consumption and building-attribute data.
 - Compare custom classifiers against sklearn, neural-network and XGBoost baselines.
 - Train soft-voting and stacking ensembles.
+- Study Bagging, AdaBoost, Extra Trees, HistGradientBoosting, ensemble diversity and error-correlation diagnostics.
 - Run feature engineering, feature selection, decision-boundary and model-diagnostic notebooks.
 - Study regularization with Ridge, Lasso, ElasticNet and regularized logistic regression experiments.
 - Study dimensionality reduction with custom PCA, LDA, Kernel PCA, t-SNE and optional UMAP experiments.
@@ -69,6 +70,9 @@ Custom models implemented from scratch:
 | `LogisticRegressionSoftmax`    | NumPy                                        | Multiclass softmax regression with cross-entropy loss                       |
 | `DecisionTreeClassifierCustom` | NumPy                                        | CART-style classifier with Gini or entropy splits                           |
 | `DecisionTreeRegressorCustom`  | NumPy                                        | CART-style regressor using MSE reduction                                    |
+| `BaggingClassifierCustom`      | NumPy + sklearn-compatible estimator API     | Bootstrap aggregating with custom base estimators, feature subsampling and out-of-bag scoring |
+| `BaggingRegressorCustom`       | NumPy + sklearn-compatible estimator API     | Bootstrap aggregating for regression with averaged predictions and OOB R2   |
+| `AdaBoostClassifierCustom`     | NumPy + sklearn-compatible estimator API     | SAMME multi-class boosting with sequential sample reweighting, staged predictions and a decision-stump default |
 | `SVMClassifierCustom`          | NumPy + random Fourier features for RBF mode | Binary soft-margin SVM with hinge-loss optimization                         |
 | `GaussianNaiveBayes`           | NumPy                                        | Probabilistic classifier for continuous numeric features                    |
 | `MultinomialNaiveBayes`        | NumPy                                        | Count-feature Naive Bayes for text or frequency data                        |
@@ -97,6 +101,10 @@ Production training candidates in `src/train.py`:
 | XGBoost             | Gradient-boosted tree model                                          |
 | Soft Voting         | Combines Logistic Regression, MLP and XGBoost                        |
 | Stacking            | Meta-learner over Logistic Regression, MLP and XGBoost probabilities |
+| Extra Trees         | Randomized tree ensemble baseline                                    |
+| HistGradientBoosting | Histogram-based sklearn gradient boosting baseline                  |
+| Custom Bagging      | Bagging ensemble using `DecisionTreeClassifierCustom`                |
+| Custom AdaBoost     | SAMME-style boosting ensemble using custom decision stumps           |
 
 The reusable AI Dataset Assistant also trains classification and regression baselines for uploaded CSV files:
 
@@ -107,7 +115,10 @@ The reusable AI Dataset Assistant also trains classification and regression base
 | KNN                 | KNN Regressor               |
 | SVM                 | SVR                         |
 | Random Forest       | Random Forest Regressor     |
+| ExtraTrees          | ExtraTrees                  |
 | Gradient Boosting   | Gradient Boosting Regressor |
+| HistGradientBoosting | HistGradientBoosting       |
+| AdaBoost            | AdaBoost                    |
 | MLP Neural Network  | MLP Regressor               |
 | XGBoost             | XGBoost Regressor           |
 
@@ -118,7 +129,7 @@ Library algorithms used across the notebooks:
 | sklearn linear models             | Linear Regression, Logistic Regression, Ridge, Lasso, ElasticNet, Bayesian Ridge |
 | sklearn neural networks           | MLPClassifier, MLPRegressor through the AutoML assistant                         |
 | XGBoost                           | XGBClassifier                                                                    |
-| sklearn ensembles                 | VotingClassifier, StackingClassifier                                             |
+| sklearn ensembles                 | VotingClassifier, StackingClassifier, Bagging, Random Forest, Extra Trees, AdaBoost, Gradient Boosting, HistGradientBoosting |
 | sklearn trees                     | DecisionTreeClassifier, DecisionTreeRegressor                                    |
 | sklearn SVM                       | SVC, SVR                                                                         |
 | sklearn Naive Bayes               | GaussianNB, MultinomialNB, BernoulliNB                                           |
@@ -340,6 +351,32 @@ Key notebook findings:
 
 ---
 
+## Ensemble Extensions
+
+Notebook 19 expands the ensemble-learning side of EnergyTypeNet. It keeps the existing voting and stacking work, then adds custom Bagging and AdaBoost implementations that reuse `DecisionTreeClassifierCustom` as the base learner.
+
+The ensemble suite includes:
+
+- custom `BaggingClassifierCustom` with bootstrap row sampling, random feature subsampling, soft-vote probabilities, averaged feature importances and out-of-bag scoring
+- custom `BaggingRegressorCustom` using `DecisionTreeRegressorCustom` and averaged predictions
+- custom multiclass `AdaBoostClassifierCustom` using SAMME-style weighted decision stumps
+- staged AdaBoost diagnostics for training accuracy, test accuracy, estimator errors, estimator weights and sample-weight evolution
+- diversity diagnostics for bootstrap trees, including Q-statistic, double-fault rate and disagreement
+- Extra Trees vs Random Forest comparisons
+- HistGradientBoosting sweeps over iteration count and leaf count
+- regression ensemble comparisons on EnergyTypeNet and a guarded California Housing benchmark
+- greedy ensemble selection and error-correlation heatmaps
+- a grand ensemble comparison table across custom, sklearn and XGBoost models
+
+Key notebook goals:
+
+- show why ensembles work through variance reduction and error diversity
+- connect custom decision trees to higher-level meta-estimators
+- compare classical bagging, boosting and randomized-tree families against the existing voting/stacking setup
+- extend the production training and AutoML baselines with stronger ensemble candidates
+
+---
+
 ## Dashboard
 
 Run the dashboard with:
@@ -437,6 +474,7 @@ notebooks/
   16_autoencoders.ipynb
   17_convolutional_neural_networks.ipynb
   18_recurrent_neural_networks.ipynb
+  19_ensemble_extensions.ipynb
 
 src/
   api.py                             FastAPI prediction service
@@ -652,6 +690,8 @@ The CNN notebook adds convolutional neural-network foundations on image data usi
 
 The RNN notebook adds recurrent neural-network foundations using synthetic sequence data and an educational EnergyTypeNet row-order forecasting demo. It shows why hidden-state models, LSTM gates, GRU gates, bidirectionality and attention matter for sequential problems, while also documenting that EnergyTypeNet itself has no true timestamped ordering.
 
+The ensemble-extensions notebook adds Bagging, AdaBoost, Extra Trees and HistGradientBoosting diagnostics. It shows that ensemble value depends on both base-model accuracy and error diversity, and it connects the custom decision-tree implementation to meta-estimators rather than treating it as an isolated model.
+
 The AI Dataset Assistant extends the project beyond this one dataset by making the workflow reusable for other tabular CSV files while keeping explanations grounded in computed statistics.
 
 ---
@@ -660,7 +700,6 @@ The AI Dataset Assistant extends the project beyond this one dataset by making t
 
 Planned future improvements:
 
-- `ensemble-extensions`: extend beyond existing voting/stacking with bagging, AdaBoost, Extra Trees, histogram gradient boosting and broader ensemble diagnostics.
 - `deploy-streamlit`: add a public Streamlit deployment link and screenshots after the app is stable.
 - `dataset-chat-agent`: add chat history and richer follow-up questions.
 - `hosted-llm-provider`: add optional API-key based hosted LLM streaming with usage controls.
