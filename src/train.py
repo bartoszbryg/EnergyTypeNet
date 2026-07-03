@@ -8,7 +8,12 @@ import joblib
 import mlflow
 import mlflow.sklearn
 import numpy as np
-from sklearn.ensemble import StackingClassifier, VotingClassifier
+from sklearn.ensemble import (
+    ExtraTreesClassifier,
+    HistGradientBoostingClassifier,
+    StackingClassifier,
+    VotingClassifier,
+)
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.model_selection import StratifiedKFold, cross_val_score
@@ -18,6 +23,11 @@ from sklearn.preprocessing import StandardScaler
 from xgboost import XGBClassifier
 
 from src.data import CLASSES, load_features
+from src.models import (
+    AdaBoostClassifierCustom,
+    BaggingClassifierCustom,
+    DecisionTreeClassifierCustom,
+)
 
 
 def build_models(random_state: int = 42) -> dict:
@@ -66,12 +76,49 @@ def build_models(random_state: int = 42) -> dict:
         n_jobs=1,
     )
 
+    extra_trees = make_pipeline(
+        StandardScaler(),
+        ExtraTreesClassifier(n_estimators=100, random_state=random_state),
+    )
+
+    hist_gb = make_pipeline(
+        StandardScaler(),
+        HistGradientBoostingClassifier(
+            max_iter=200,
+            max_leaf_nodes=31,
+            random_state=random_state,
+        ),
+    )
+
+    custom_bagging = make_pipeline(
+        StandardScaler(),
+        BaggingClassifierCustom(
+            base_estimator=DecisionTreeClassifierCustom(max_depth=5),
+            n_estimators=50,
+            random_state=random_state,
+        ),
+    )
+
+    custom_adaboost = make_pipeline(
+        StandardScaler(),
+        AdaBoostClassifierCustom(
+            base_estimator=DecisionTreeClassifierCustom(max_depth=1),
+            n_estimators=100,
+            learning_rate=0.5,
+            random_state=random_state,
+        ),
+    )
+
     return {
         'logistic_regression': lr,
         'mlp': mlp,
         'xgboost': xgb,
         'soft_voting': voting,
         'stacking': stacking,
+        'extra_trees': extra_trees,
+        'hist_gradient_boosting': hist_gb,
+        'custom_bagging': custom_bagging,
+        'custom_adaboost': custom_adaboost,
     }
 
 

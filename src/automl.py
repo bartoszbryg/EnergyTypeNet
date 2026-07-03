@@ -11,8 +11,14 @@ import matplotlib.pyplot as plt
 from sklearn.compose import ColumnTransformer
 from sklearn.dummy import DummyClassifier, DummyRegressor
 from sklearn.ensemble import (
+    AdaBoostClassifier,
+    AdaBoostRegressor,
+    ExtraTreesClassifier,
+    ExtraTreesRegressor,
     GradientBoostingClassifier,
     GradientBoostingRegressor,
+    HistGradientBoostingClassifier,
+    HistGradientBoostingRegressor,
     RandomForestClassifier,
     RandomForestRegressor,
 )
@@ -299,7 +305,13 @@ def build_baseline_models(task_type: str, n_classes: int | None = None) -> dict[
             'KNN': KNeighborsClassifier(n_neighbors=3),
             'SVM': SVC(),
             'Random Forest': RandomForestClassifier(n_estimators=200, random_state=42),
+            'ExtraTrees': ExtraTreesClassifier(n_estimators=100, random_state=42),
             'Gradient Boosting': GradientBoostingClassifier(random_state=42),
+            'HistGradientBoosting': HistGradientBoostingClassifier(
+                max_iter=100,
+                random_state=42,
+            ),
+            'AdaBoost': AdaBoostClassifier(n_estimators=50, random_state=42),
             'MLP Neural Network': MLPClassifier(
                 hidden_layer_sizes=(64, 32),
                 max_iter=600,
@@ -318,7 +330,13 @@ def build_baseline_models(task_type: str, n_classes: int | None = None) -> dict[
             n_estimators=200,
             random_state=42,
         ),
+        'ExtraTrees': ExtraTreesRegressor(n_estimators=100, random_state=42),
         'Gradient Boosting Regressor': GradientBoostingRegressor(random_state=42),
+        'HistGradientBoosting': HistGradientBoostingRegressor(
+            max_iter=100,
+            random_state=42,
+        ),
+        'AdaBoost': AdaBoostRegressor(n_estimators=50, random_state=42),
         'MLP Regressor': MLPRegressor(
             hidden_layer_sizes=(64, 32),
             max_iter=800,
