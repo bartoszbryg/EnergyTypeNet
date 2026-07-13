@@ -4,7 +4,7 @@ I built EnergyTypeNet to predict whether a building is Residential, Commercial o
 
 On top of those custom models, I trained sklearn Logistic Regression, MLP and XGBoost baselines, then compared the full model set with 5-fold stratified cross-validation, holdout evaluation, confusion matrices, ROC/AUC curves, precision-recall curves and learning curves. I also added soft-voting, stacking, custom Bagging, custom AdaBoost, Extra Trees and HistGradientBoosting experiments to test when combining learners improves performance over a single model. The project is packaged like a real machine-learning system: it includes MLflow experiment tracking, a reproducible training script, saved model artifacts, a FastAPI prediction service, Docker deployment support, GitHub Actions CI and a Streamlit dashboard.
 
-The project also grew into a reusable AutoML-style tool through the AI Dataset Assistant. Instead of working only on the original building-energy dataset, the dashboard can now accept a custom CSV file, profile the dataset, detect missing values and data types, suggest possible target columns, infer whether the task should be classification or regression, recommend usable feature columns, rank features with mutual information, compare all selected features against a compact feature set, train multiple baseline models and generate a short natural-language dataset report grounded in computed results. It also has a deterministic dataset question-answering assistant and optional local LLM streaming through Ollama, so the explanations can feel more natural while still staying tied to the actual model outputs.
+The project also grew into a reusable AutoML-style tool through the AI Dataset Assistant. Instead of working only on the original building-energy dataset, the dashboard can now accept a custom CSV file, profile the dataset, detect missing values and data types, suggest possible target columns, infer whether the task should be classification or regression, recommend usable feature columns, rank features with mutual information, compare all selected features against a compact feature set, train multiple baseline models and generate a short natural-language dataset report grounded in computed results. It also has a multi-turn dataset chat assistant with deterministic grounded answers, context-aware follow-up routing, suggested questions, JSON chat export and optional local LLM streaming through Ollama, so the explanations can feel more natural while still staying tied to the actual model outputs.
 
 The research part answers a specific question I had: is the accuracy ceiling caused by too little data, or by the classes being too similar in feature space? Notebook 06 runs a synthetic experiment showing that the issue is not caused by insufficient data, so collecting more data would not fix it. One important finding was that the extended feature set can produce near-perfect validation scores, but that is not necessarily a better scientific result because some features may encode the label too directly. The more honest benchmark is the smaller core-feature setup, where performance is lower but more realistic.
 
@@ -30,6 +30,7 @@ The research part answers a specific question I had: is the accuracy ceiling cau
 - Explore results through a Streamlit dashboard.
 - Upload custom CSV files and run a lightweight AutoML workflow.
 - Generate dataset reports and grounded natural-language explanations.
+- Ask multi-turn dataset questions with chat history, suggested follow-ups and JSON export.
 - Optionally stream local LLM answers with Ollama when running locally.
 
 ---
@@ -418,7 +419,8 @@ Turns any uploaded CSV into a guided AutoML-style analysis:
 - trains classification or regression baselines
 - compares full selected features against compact selected features
 - generates a short dataset report
-- answers questions about model quality, missingness, important features, task type, overfitting and leakage
+- answers multi-turn questions about model quality, missingness, important features, task type, overfitting and leakage
+- suggests follow-up questions and exports the chat history as JSON
 
 The assistant uses deterministic, computed-statistic answers by default. Local LLM streaming is optional and only runs when Ollama is installed and active on the user's machine.
 
@@ -443,7 +445,7 @@ ollama run llama3.1
 streamlit run dashboard.py
 ```
 
-Then open **AI Dataset Assistant**, enable **Use local LLM explanation if Ollama is running**, keep the model as `llama3.1` and ask a dataset question.
+Then open **AI Dataset Assistant**, enable **Ollama explanations**, keep the model as `llama3.1` and ask a dataset question.
 
 ---
 
@@ -479,6 +481,7 @@ notebooks/
 src/
   api.py                             FastAPI prediction service
   automl.py                          CSV profiling, feature suggestions, baselines and clustering diagnostics
+  chat_agent.py                      Multi-turn dataset chat history, routing and suggestions
   data.py                            Energy dataset loading and feature engineering
   evaluation.py                      Evaluation and plotting helpers
   llm_assistant.py                   Optional local Ollama prompt/streaming helpers
@@ -491,6 +494,7 @@ tests/
   test_api.py
   test_automl.py
   test_data.py
+  test_chat_agent.py
   test_llm_assistant.py
   test_models.py
 
@@ -692,7 +696,7 @@ The RNN notebook adds recurrent neural-network foundations using synthetic seque
 
 The ensemble-extensions notebook adds Bagging, AdaBoost, Extra Trees and HistGradientBoosting diagnostics. It shows that ensemble value depends on both base-model accuracy and error diversity, and it connects the custom decision-tree implementation to meta-estimators rather than treating it as an isolated model.
 
-The AI Dataset Assistant extends the project beyond this one dataset by making the workflow reusable for other tabular CSV files while keeping explanations grounded in computed statistics.
+The AI Dataset Assistant extends the project beyond this one dataset by making the workflow reusable for other tabular CSV files while keeping explanations grounded in computed statistics. It now supports multi-turn chat history, context-aware follow-up questions, suggested next questions, optional local Ollama streaming and downloadable JSON chat exports.
 
 ---
 
@@ -701,6 +705,9 @@ The AI Dataset Assistant extends the project beyond this one dataset by making t
 Planned future improvements:
 
 - `deploy-streamlit`: add a public Streamlit deployment link and screenshots after the app is stable.
-- `dataset-chat-agent`: add chat history and richer follow-up questions.
 - `hosted-llm-provider`: add optional API-key based hosted LLM streaming with usage controls.
 - `refactor-models-package`: split `src/models.py` into focused modules after the model suite stabilizes.
+
+Completed extension branches:
+
+- `dataset-chat-agent`: added multi-turn dataset chat, contextual follow-up routing, suggested questions and JSON chat export.
