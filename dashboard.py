@@ -9,6 +9,7 @@ Run from repo root:
 """
 
 import io
+import json
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -28,7 +29,6 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler, label_binarize
 from xgboost import XGBClassifier
 
 from src.automl import (
-    answer_dataset_question,
     clean_dataframe,
     generate_dataset_report,
     guess_task_type,
@@ -42,9 +42,16 @@ from src.automl import (
 )
 from src.llm_assistant import (
     DEFAULT_OLLAMA_MODEL,
-    build_dataset_context,
-    build_dataset_prompt,
     stream_ollama,
+)
+from src.chat_agent import (
+    ChatHistory,
+    ChatMessage,
+    build_contextualized_prompt,
+    classify_question,
+    handle_follow_up,
+    suggest_next_questions,
+    utc_timestamp,
 )
 from src.data import CLASSES as ENERGY_CLASSES, load_features, load_raw
 from src.models import AttentionClassifier, LogisticRegressionSoftmax
@@ -953,6 +960,21 @@ def render_dataset_assistant():
         'grounded in computed results.'
     )
 
+    if 'chat_history' not in st.session_state:
+        st.session_state.chat_history = ChatHistory(max_turns=20)
+    if 'last_dataset_signature' not in st.session_state:
+        st.session_state.last_dataset_signature = None
+    if 'last_profile' not in st.session_state:
+        st.session_state.last_profile = None
+    if 'last_prepared' not in st.session_state:
+        st.session_state.last_prepared = None
+    if 'last_results' not in st.session_state:
+        st.session_state.last_results = None
+    if 'last_feature_ranking' not in st.session_state:
+        st.session_state.last_feature_ranking = None
+    if 'pending_question' not in st.session_state:
+        st.session_state.pending_question = None
+
     uploaded = st.file_uploader(
         'Upload a CSV file',
         type='csv',
@@ -969,8 +991,19 @@ def render_dataset_assistant():
         st.error('The uploaded CSV has no usable rows or columns.')
         return
 
+    dataset_signature = f"{uploaded.name}:{df.shape}:{','.join(df.columns.astype(str))}"
+
+    if st.session_state.last_dataset_signature != dataset_signature:
+        st.session_state.chat_history.clear()
+        st.session_state.last_profile = None
+        st.session_state.last_prepared = None
+        st.session_state.last_results = None
+        st.session_state.last_feature_ranking = None
+        st.session_state.last_dataset_signature = dataset_signature
+
     profile = profile_dataset(df)
     target_suggestions = suggest_targets(df)
+    st.session_state.last_profile = profile
 
     st.subheader('1. Dataset Profile')
     c1, c2, c3, c4 = st.columns(4)
@@ -1067,6 +1100,7 @@ def render_dataset_assistant():
         f'(**{len(prepared.numeric_cols)}** numeric, '
         f'**{len(prepared.categorical_cols)}** categorical).'
     )
+    st.session_state.last_prepared = prepared
 
     if prepared.classes:
         st.caption('Classes: ' + ', '.join(f'`{cls}`' for cls in prepared.classes))
@@ -1075,6 +1109,7 @@ def render_dataset_assistant():
 
     feature_ranking = rank_features(prepared)
     feature_recommendations = recommend_features(prepared)
+    st.session_state.last_feature_ranking = feature_ranking
 
     st.markdown('**Recommended strongest features**')
     st.caption(
@@ -1138,6 +1173,7 @@ def render_dataset_assistant():
         with st.spinner('Training baseline models and computing cross-validation scores...'):
             try:
                 results, _ = train_baselines(prepared)
+                st.session_state.last_results = results
 
                 if compare_compact:
                     compact_prepared = prepare_dataset(
@@ -1294,63 +1330,163 @@ def render_dataset_assistant():
             mime='text/markdown',
         )
 
-        st.session_state['assistant_profile'] = profile
-        st.session_state['assistant_prepared'] = prepared
-        st.session_state['assistant_results'] = results
-        st.session_state['assistant_feature_ranking'] = feature_ranking
+    st.subheader('6. Dataset Assistant')
 
-    st.subheader('6. Ask About This Dataset')
-    use_local_llm = st.checkbox(
-        'Use local LLM explanation if Ollama is running',
-        value=False,
+    st.session_state['ollama_enabled'] = st.toggle(
+        'Enable Ollama explanations',
+        value=st.session_state.get('ollama_enabled', False),
         help=(
-            'Optional. Start Ollama locally and pull a model such as llama3.1. '
-            'If the local model is unavailable, the assistant uses the deterministic answer.'
+            'Optional. Start Ollama locally on port 11434. If streaming fails, '
+            'the assistant falls back to the deterministic answer.'
         ),
     )
-    local_llm_model = st.text_input(
-        'Local LLM model',
-        value=DEFAULT_OLLAMA_MODEL,
-        disabled=not use_local_llm,
-    )
-    question = st.text_input(
-        'Ask a question',
-        placeholder='Example: What is the best model? Which features matter most?',
-    )
+
+    if st.session_state['ollama_enabled']:
+        st.session_state['ollama_model'] = st.selectbox(
+            'Ollama model',
+            ['llama3.1', 'llama3.2', 'mistral', 'phi3', 'gemma2'],
+            index=0,
+        )
+        st.caption('Ollama must be running locally on port 11434.')
+    else:
+        st.session_state['ollama_model'] = DEFAULT_OLLAMA_MODEL
+
+    history = st.session_state.chat_history
+
+    with st.container():
+        for msg in history.messages:
+            with st.chat_message(msg.role):
+                st.write(msg.content)
+
+                if msg.role == 'assistant':
+                    st.caption(
+                        f"Source: {msg.source} | "
+                        f"{msg.question_type.replace('_', ' ')} | "
+                        f"{msg.timestamp[:10]}"
+                    )
+
+    if history.messages:
+        last_type = history.messages[-1].question_type
+        suggestions = suggest_next_questions(
+            last_type,
+            st.session_state.last_profile,
+            st.session_state.last_prepared,
+            st.session_state.last_results,
+        )
+        st.caption('Suggested follow-ups:')
+        cols = st.columns(len(suggestions))
+
+        for i, suggestion in enumerate(suggestions):
+            if cols[i].button(suggestion, key=f'suggest_{i}_{len(history.messages)}'):
+                st.session_state.pending_question = suggestion
+                st.rerun()
+
+    col1, col2, col3 = st.columns([1, 1, 2])
+
+    with col1:
+        if st.button('Clear chat', type='secondary'):
+            st.session_state.chat_history.clear()
+            st.rerun()
+
+    with col2:
+        if history.messages:
+            history_json = json.dumps(history.to_dict_list(), indent=2)
+            st.download_button(
+                label='Export chat',
+                data=history_json,
+                file_name='dataset_chat.json',
+                mime='application/json',
+            )
+
+    with col3:
+        st.caption(
+            f'{len(history.messages)} messages | '
+            f'{len(history.user_questions())} questions'
+        )
+
+    user_input = st.chat_input('Ask something about your dataset...')
+
+    question = None
+    if user_input:
+        question = user_input
+    elif st.session_state.pending_question:
+        question = st.session_state.pending_question
+        st.session_state.pending_question = None
 
     if question:
-        profile_saved = st.session_state.get('assistant_profile', profile)
-        prepared_saved = st.session_state.get('assistant_prepared', prepared)
-        results_saved = st.session_state.get('assistant_results', results)
-        ranking_saved = st.session_state.get('assistant_feature_ranking', feature_ranking)
-        answer = answer_dataset_question(
+        profile_saved = st.session_state.last_profile
+        prepared_saved = st.session_state.last_prepared
+        results_saved = st.session_state.last_results
+        ranking_saved = st.session_state.last_feature_ranking
+
+        if profile_saved is None:
+            st.warning('Please upload a dataset and run analysis first.')
+            return
+
+        q_type = classify_question(question, profile_saved, prepared_saved)
+        st.session_state.chat_history.add(ChatMessage(
+            role='user',
+            content=question,
+            source='user',
+            timestamp=utc_timestamp(),
+            question_type=q_type,
+            grounded=False,
+        ))
+        deterministic = handle_follow_up(
             question,
+            st.session_state.chat_history,
             profile_saved,
             prepared_saved,
             results_saved,
             ranking_saved,
         )
-        if use_local_llm:
-            context = build_dataset_context(
-                profile_saved,
-                prepared_saved,
-                results_saved,
-                ranking_saved,
-            )
-            prompt = build_dataset_prompt(context, question)
+        answer = deterministic
+        source = 'deterministic'
 
-            try:
-                st.success('Streaming local LLM answer grounded on computed dataset results.')
-                st.write_stream(stream_ollama(prompt, model=local_llm_model))
-            except RuntimeError:
-                st.caption(
-                    'Local LLM streaming was unavailable, so the built-in deterministic '
-                    'assistant answered instead.'
+        with st.chat_message('assistant'):
+            if st.session_state.get('ollama_enabled', False):
+                prompt = build_contextualized_prompt(
+                    question,
+                    st.session_state.chat_history,
+                    profile_saved,
+                    prepared_saved,
+                    results_saved,
+                    ranking_saved,
+                    q_type,
                 )
-                st.info(answer)
-        else:
-            st.caption('Answered with the built-in deterministic assistant.')
-            st.info(answer)
+                response_placeholder = st.empty()
+                full_response = ''
+
+                try:
+                    for token in stream_ollama(
+                        prompt,
+                        model=st.session_state.get('ollama_model', DEFAULT_OLLAMA_MODEL),
+                    ):
+                        full_response += token
+                        response_placeholder.markdown(full_response + '...')
+
+                    response_placeholder.markdown(full_response)
+                    answer = full_response
+                    source = 'ollama'
+                except RuntimeError:
+                    source = 'fallback'
+                    st.caption(
+                        'Local LLM streaming was unavailable, so the deterministic '
+                        'assistant answered instead.'
+                    )
+                    st.markdown(answer)
+            else:
+                st.markdown(answer)
+
+        st.session_state.chat_history.add(ChatMessage(
+            role='assistant',
+            content=answer,
+            source=source,
+            timestamp=utc_timestamp(),
+            question_type=q_type,
+            grounded=True,
+        ))
+        st.rerun()
 
 
 # Sidebar and routing

@@ -692,7 +692,7 @@ The RNN notebook adds recurrent neural-network foundations using synthetic seque
 
 The ensemble-extensions notebook adds Bagging, AdaBoost, Extra Trees and HistGradientBoosting diagnostics. It shows that ensemble value depends on both base-model accuracy and error diversity, and it connects the custom decision-tree implementation to meta-estimators rather than treating it as an isolated model.
 
-The AI Dataset Assistant extends the project beyond this one dataset by making the workflow reusable for other tabular CSV files while keeping explanations grounded in computed statistics.
+The AI Dataset Assistant extends the project beyond this one dataset by making the workflow reusable for other tabular CSV files while keeping explanations grounded in computed statistics. It now supports multi-turn chat history, context-aware follow-up questions, suggested next questions, optional local Ollama streaming and downloadable JSON chat exports.
 
 ---
 
@@ -701,6 +701,9 @@ The AI Dataset Assistant extends the project beyond this one dataset by making t
 Planned future improvements:
 
 - `deploy-streamlit`: add a public Streamlit deployment link and screenshots after the app is stable.
-- `dataset-chat-agent`: add chat history and richer follow-up questions.
 - `hosted-llm-provider`: add optional API-key based hosted LLM streaming with usage controls.
 - `refactor-models-package`: split `src/models.py` into focused modules after the model suite stabilizes.
+
+Completed extension branches:
+
+- `dataset-chat-agent`: added multi-turn dataset chat, contextual follow-up routing, suggested questions and JSON chat export.
