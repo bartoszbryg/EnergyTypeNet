@@ -503,8 +503,13 @@ def generate_dataset_report(
     prepared: PreparedDataset | None = None,
     results: pd.DataFrame | None = None,
     feature_ranking: pd.DataFrame | None = None,
+    compact_results: pd.DataFrame | None = None,
 ) -> str:
     """Generate a short natural-language dataset report."""
+    full_primary_score = None
+    compact_primary_score = None
+    full_metric_name = None
+
     lines = [
         '# Dataset Report',
         '',
@@ -536,19 +541,63 @@ def generate_dataset_report(
         best_row = results.iloc[0]
 
         if prepared and prepared.task_type == 'classification':
+            full_primary_score = float(best_row['test_accuracy'])
+            full_metric_name = 'test accuracy'
             lines.extend([
                 '',
+                'All-selected-feature baseline result:',
                 f"Best baseline model: **{best_row['model']}**.",
                 f"Test accuracy: **{best_row['test_accuracy']:.3f}**.",
                 f"Macro F1: **{best_row['test_f1_macro']:.3f}**.",
             ])
         else:
+            full_primary_score = float(best_row['test_r2'])
+            full_metric_name = 'test R2'
             lines.extend([
                 '',
+                'All-selected-feature baseline result:',
                 f"Best baseline model: **{best_row['model']}**.",
                 f"Test R2: **{best_row['test_r2']:.3f}**.",
                 f"Test MAE: **{best_row['test_mae']:.3f}**.",
             ])
+
+    if compact_results is not None and not compact_results.empty:
+        compact_best = compact_results.iloc[0]
+
+        if prepared and prepared.task_type == 'classification':
+            compact_primary_score = float(compact_best['test_accuracy'])
+            lines.extend([
+                '',
+                'Suggested-compact-feature baseline result:',
+                f"Best compact model: **{compact_best['model']}**.",
+                f"Compact test accuracy: **{compact_best['test_accuracy']:.3f}**.",
+                f"Compact macro F1: **{compact_best['test_f1_macro']:.3f}**.",
+            ])
+        else:
+            compact_primary_score = float(compact_best['test_r2'])
+            lines.extend([
+                '',
+                'Suggested-compact-feature baseline result:',
+                f"Best compact model: **{compact_best['model']}**.",
+                f"Compact test R2: **{compact_best['test_r2']:.3f}**.",
+                f"Compact test MAE: **{compact_best['test_mae']:.3f}**.",
+            ])
+
+    if (
+        full_primary_score is not None
+        and compact_primary_score is not None
+        and full_metric_name is not None
+        and full_primary_score >= 0.98
+        and full_primary_score - compact_primary_score >= 0.15
+    ):
+        lines.extend([
+            '',
+            '**Diagnostic warning:** the all-selected feature set is near-perfect, '
+            'but the compact feature set is much weaker. Treat the 1.000 score as '
+            'a warning to investigate label-revealing features, target leakage, or '
+            'an easy holdout split. The compact result is the more conservative '
+            f'{full_metric_name} benchmark.',
+        ])
 
     if feature_ranking is not None and not feature_ranking.empty:
         top_features = ', '.join(

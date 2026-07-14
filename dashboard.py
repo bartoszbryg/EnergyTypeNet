@@ -10,6 +10,7 @@ Run from repo root:
 
 import io
 import json
+import time
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -40,6 +41,7 @@ from src.automl import (
     suggest_targets,
     train_baselines,
 )
+from src.agent_tools import run_dataset_computation
 from src.llm_assistant import (
     COST_PER_1K_TOKENS,
     DEFAULT_OLLAMA_MODEL,
@@ -986,10 +988,16 @@ def render_dataset_assistant():
         st.session_state.last_prepared = None
     if 'last_results' not in st.session_state:
         st.session_state.last_results = None
+    if 'last_compact_results' not in st.session_state:
+        st.session_state.last_compact_results = None
     if 'last_feature_ranking' not in st.session_state:
         st.session_state.last_feature_ranking = None
+    if 'last_tool_tables' not in st.session_state:
+        st.session_state.last_tool_tables = {}
     if 'pending_question' not in st.session_state:
         st.session_state.pending_question = None
+    if 'pending_response' not in st.session_state:
+        st.session_state.pending_response = None
 
     uploaded = st.file_uploader(
         'Upload a CSV file',
@@ -1014,7 +1022,9 @@ def render_dataset_assistant():
         st.session_state.last_profile = None
         st.session_state.last_prepared = None
         st.session_state.last_results = None
+        st.session_state.last_compact_results = None
         st.session_state.last_feature_ranking = None
+        st.session_state.last_tool_tables = {}
         st.session_state.last_dataset_signature = dataset_signature
 
     profile = profile_dataset(df)
@@ -1190,6 +1200,7 @@ def render_dataset_assistant():
             try:
                 results, _ = train_baselines(prepared)
                 st.session_state.last_results = results
+                st.session_state.last_compact_results = None
 
                 if compare_compact:
                     compact_prepared = prepare_dataset(
@@ -1199,6 +1210,7 @@ def render_dataset_assistant():
                         task_type,
                     )
                     compact_results, _ = train_baselines(compact_prepared)
+                    st.session_state.last_compact_results = compact_results
             except Exception as exc:
                 st.error(f'Model training failed: {exc}')
                 return
@@ -1258,11 +1270,20 @@ def render_dataset_assistant():
 
             full_score = float(comparison_df.loc[0, metric_name])
             compact_score = float(comparison_df.loc[1, metric_name])
+            feature_gap = full_score - compact_score
 
             if compact_score > full_score + 0.01:
                 st.success(
                     'The compact feature set performed better. Removing weak columns '
                     'likely reduced noise.'
+                )
+            elif full_score >= 0.98 and feature_gap >= 0.15:
+                st.warning(
+                    'The all-selected feature set is near-perfect while the compact '
+                    'feature set is much weaker. Treat this as a diagnostic warning, '
+                    'not automatic proof of real-world generalization. Some selected '
+                    'columns may reveal the target too directly, or this holdout split '
+                    'may be unusually easy.'
                 )
             elif full_score > compact_score + 0.01:
                 st.warning(
@@ -1337,6 +1358,7 @@ def render_dataset_assistant():
             prepared,
             results,
             feature_ranking,
+            compact_results,
         )
         st.markdown(report)
         st.download_button(
@@ -1382,7 +1404,13 @@ def render_dataset_assistant():
                         f"{msg.timestamp[:10]}"
                     )
 
-    if history.messages:
+    if st.session_state.last_tool_tables:
+        with st.expander('Latest computed diagnostic tables', expanded=False):
+            for table_name, table in st.session_state.last_tool_tables.items():
+                st.markdown(f'**{table_name.replace("_", " ").title()}**')
+                st.dataframe(table, width='stretch', hide_index=True)
+
+    if history.messages and st.session_state.pending_response is None:
         last_type = history.messages[-1].question_type
         suggestions = suggest_next_questions(
             last_type,
@@ -1433,8 +1461,6 @@ def render_dataset_assistant():
     if question:
         profile_saved = st.session_state.last_profile
         prepared_saved = st.session_state.last_prepared
-        results_saved = st.session_state.last_results
-        ranking_saved = st.session_state.last_feature_ranking
 
         if profile_saved is None:
             st.warning('Please upload a dataset and run analysis first.')
@@ -1449,18 +1475,55 @@ def render_dataset_assistant():
             question_type=q_type,
             grounded=False,
         ))
-        deterministic = handle_follow_up(
-            question,
-            st.session_state.chat_history,
-            profile_saved,
-            prepared_saved,
-            results_saved,
-            ranking_saved,
-        )
-        answer = deterministic
-        source = 'deterministic'
+        st.session_state.pending_response = {
+            'question': question,
+            'question_type': q_type,
+        }
+        st.rerun()
+
+    if st.session_state.pending_response:
+        pending = st.session_state.pending_response
+        question = pending['question']
+        q_type = pending['question_type']
+
+        profile_saved = st.session_state.last_profile
+        prepared_saved = st.session_state.last_prepared
+        results_saved = st.session_state.last_results
+        compact_results_saved = st.session_state.last_compact_results
+        ranking_saved = st.session_state.last_feature_ranking
 
         with st.chat_message('assistant'):
+            with st.spinner('Thinking through the dataset...'):
+                thinking_placeholder = st.empty()
+                thinking_placeholder.markdown('_Thinking through the dataset..._')
+
+                previous_assistant = st.session_state.chat_history.last_assistant_message()
+                tool_result = run_dataset_computation(
+                    question,
+                    profile_saved,
+                    prepared_saved,
+                    results_saved,
+                    ranking_saved,
+                    compact_results_saved,
+                    previous_answer=previous_assistant.content if previous_assistant else None,
+                )
+
+                if tool_result is not None:
+                    deterministic = tool_result.answer
+                    source = tool_result.source
+                    st.session_state.last_tool_tables = tool_result.tables
+                else:
+                    deterministic = handle_follow_up(
+                        question,
+                        st.session_state.chat_history,
+                        profile_saved,
+                        prepared_saved,
+                        results_saved,
+                        ranking_saved,
+                    )
+                    source = 'deterministic'
+
+            answer = deterministic
             provider = st.session_state.get('llm_provider', 'none')
 
             if provider != 'none':
@@ -1472,9 +1535,13 @@ def render_dataset_assistant():
                     results_saved,
                     ranking_saved,
                     q_type,
+                    tool_result=tool_result.answer if tool_result else None,
                 )
+                thinking_placeholder.markdown('_Thinking through the dataset..._')
+                time.sleep(0.25)
                 response_placeholder = st.empty()
                 full_response = ''
+                first_token = True
 
                 try:
                     gen, actual_source = stream_with_fallback(
@@ -1486,9 +1553,14 @@ def render_dataset_assistant():
                     )
 
                     for token in gen:
+                        if first_token:
+                            thinking_placeholder.empty()
+                            first_token = False
+
                         full_response += token
                         response_placeholder.markdown(full_response + '...')
 
+                    thinking_placeholder.empty()
                     response_placeholder.markdown(full_response)
                     answer = full_response
                     source = actual_source
@@ -1500,6 +1572,7 @@ def render_dataset_assistant():
                         full_response,
                     )
                 except Exception as exc:
+                    thinking_placeholder.empty()
                     source = 'deterministic'
                     st.caption(
                         f'LLM streaming failed ({exc}), so the deterministic '
@@ -1507,7 +1580,14 @@ def render_dataset_assistant():
                     )
                     st.markdown(answer)
             else:
+                thinking_placeholder.empty()
                 st.markdown(answer)
+
+            if tool_result is not None and tool_result.tables:
+                with st.expander('Computed diagnostic tables', expanded=False):
+                    for table_name, table in tool_result.tables.items():
+                        st.markdown(f'**{table_name.replace("_", " ").title()}**')
+                        st.dataframe(table, width='stretch', hide_index=True)
 
         st.session_state.chat_history.add(ChatMessage(
             role='assistant',
@@ -1517,6 +1597,7 @@ def render_dataset_assistant():
             question_type=q_type,
             grounded=True,
         ))
+        st.session_state.pending_response = None
         st.rerun()
 
 

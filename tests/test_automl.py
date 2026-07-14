@@ -139,6 +139,53 @@ def test_train_regression_baselines_and_report():
     assert 'Dataset Report' in report
 
 
+def test_dataset_report_distinguishes_full_and_compact_results():
+    profile = {
+        'n_rows': 100,
+        'n_columns': 4,
+        'missing_cells': 0,
+        'duplicate_rows': 0,
+    }
+    target_suggestions = [{'column': 'target', 'task_type': 'classification'}]
+    df = pd.DataFrame({
+        'feature_a': [0, 1, 2, 0, 1, 2],
+        'feature_b': [10, 11, 12, 13, 14, 15],
+        'target': ['a', 'a', 'b', 'b', 'c', 'c'],
+    })
+    prepared = prepare_dataset(
+        df,
+        'target',
+        ['feature_a', 'feature_b'],
+        'classification',
+    )
+    results = pd.DataFrame([{
+        'model': 'Logistic Regression',
+        'test_accuracy': 1.0,
+        'test_f1_macro': 1.0,
+    }])
+    compact_results = pd.DataFrame([{
+        'model': 'KNN',
+        'test_accuracy': 0.5,
+        'test_f1_macro': 0.45,
+    }])
+
+    report = generate_dataset_report(
+        profile,
+        target_suggestions,
+        prepared,
+        results,
+        None,
+        compact_results,
+    )
+
+    assert 'All-selected-feature baseline result' in report
+    assert 'Suggested-compact-feature baseline result' in report
+    assert 'Test accuracy: **1.000**' in report
+    assert 'Compact test accuracy: **0.500**' in report
+    assert 'Diagnostic warning' in report
+    assert 'label-revealing features' in report
+
+
 def test_answer_overfitting_question_uses_cv_test_gap():
     df = pd.DataFrame({
         'signal': [0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3],
