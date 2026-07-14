@@ -41,8 +41,12 @@ from src.automl import (
     train_baselines,
 )
 from src.llm_assistant import (
+    COST_PER_1K_TOKENS,
     DEFAULT_OLLAMA_MODEL,
-    stream_ollama,
+    PROVIDER_MODELS,
+    UsageTracker,
+    load_api_key,
+    stream_with_fallback,
 )
 from src.chat_agent import (
     ChatHistory,
@@ -66,6 +70,18 @@ st.set_page_config(
 CMAP_LIGHT = ListedColormap(['#FFCCCC', '#CCFFCC', '#CCCCFF'])
 CMAP_BOLD = ListedColormap(['#CC0000', '#006600', '#0000CC'])
 CLASS_COLORS = ['#CC0000', '#006600', '#0000CC', '#FF8800', '#8800FF', '#008888']
+
+
+# Session defaults
+
+if 'llm_provider' not in st.session_state:
+    st.session_state.llm_provider = 'none'
+if 'llm_model' not in st.session_state:
+    st.session_state.llm_model = None
+if 'llm_api_key' not in st.session_state:
+    st.session_state.llm_api_key = None
+if 'usage_tracker' not in st.session_state:
+    st.session_state.usage_tracker = UsageTracker()
 
 
 # Shared helpers
@@ -1332,24 +1348,25 @@ def render_dataset_assistant():
 
     st.subheader('6. Dataset Assistant')
 
-    st.session_state['ollama_enabled'] = st.toggle(
-        'Enable Ollama explanations',
-        value=st.session_state.get('ollama_enabled', False),
-        help=(
-            'Optional. Start Ollama locally on port 11434. If streaming fails, '
-            'the assistant falls back to the deterministic answer.'
-        ),
-    )
+    provider = st.session_state.get('llm_provider', 'none')
 
-    if st.session_state['ollama_enabled']:
-        st.session_state['ollama_model'] = st.selectbox(
-            'Ollama model',
-            ['llama3.1', 'llama3.2', 'mistral', 'phi3', 'gemma2'],
-            index=0,
+    if provider == 'none':
+        st.info(
+            'Deterministic answers only. Select an LLM provider in the sidebar '
+            'for richer explanations.'
         )
-        st.caption('Ollama must be running locally on port 11434.')
-    else:
-        st.session_state['ollama_model'] = DEFAULT_OLLAMA_MODEL
+    elif provider == 'ollama':
+        st.info('Using Ollama locally. Answers are grounded in dataset statistics.')
+    elif provider == 'openai':
+        st.info(
+            f"Using OpenAI ({st.session_state.llm_model}). "
+            'Estimated cost is shown in the sidebar.'
+        )
+    elif provider == 'anthropic':
+        st.info(
+            f"Using Anthropic ({st.session_state.llm_model}). "
+            'Estimated cost is shown in the sidebar.'
+        )
 
     history = st.session_state.chat_history
 
@@ -1444,7 +1461,9 @@ def render_dataset_assistant():
         source = 'deterministic'
 
         with st.chat_message('assistant'):
-            if st.session_state.get('ollama_enabled', False):
+            provider = st.session_state.get('llm_provider', 'none')
+
+            if provider != 'none':
                 prompt = build_contextualized_prompt(
                     question,
                     st.session_state.chat_history,
@@ -1458,20 +1477,32 @@ def render_dataset_assistant():
                 full_response = ''
 
                 try:
-                    for token in stream_ollama(
+                    gen, actual_source = stream_with_fallback(
                         prompt,
-                        model=st.session_state.get('ollama_model', DEFAULT_OLLAMA_MODEL),
-                    ):
+                        provider=provider,
+                        model=st.session_state.get('llm_model') or DEFAULT_OLLAMA_MODEL,
+                        fallback_answer=deterministic,
+                        api_key=st.session_state.get('llm_api_key'),
+                    )
+
+                    for token in gen:
                         full_response += token
                         response_placeholder.markdown(full_response + '...')
 
                     response_placeholder.markdown(full_response)
                     answer = full_response
-                    source = 'ollama'
-                except RuntimeError:
-                    source = 'fallback'
+                    source = actual_source
+
+                    st.session_state.usage_tracker.record(
+                        actual_source,
+                        st.session_state.get('llm_model') or DEFAULT_OLLAMA_MODEL,
+                        prompt,
+                        full_response,
+                    )
+                except Exception as exc:
+                    source = 'deterministic'
                     st.caption(
-                        'Local LLM streaming was unavailable, so the deterministic '
+                        f'LLM streaming failed ({exc}), so the deterministic '
                         'assistant answered instead.'
                     )
                     st.markdown(answer)
@@ -1496,6 +1527,73 @@ mode = st.sidebar.radio(
     'Mode',
     ['EnergyTypeNet (pre-loaded)', 'Custom Dataset', 'AI Dataset Assistant'],
 )
+
+st.sidebar.markdown('---')
+st.sidebar.subheader('LLM Provider')
+
+provider = st.sidebar.selectbox(
+    'Provider',
+    options=['none', 'ollama', 'openai', 'anthropic'],
+    format_func=lambda item: {
+        'none': 'None (deterministic only)',
+        'ollama': 'Ollama (local)',
+        'openai': 'OpenAI (API key required)',
+        'anthropic': 'Anthropic (API key required)',
+    }[item],
+    index=['none', 'ollama', 'openai', 'anthropic'].index(
+        st.session_state.get('llm_provider', 'none')
+    ),
+)
+st.session_state.llm_provider = provider
+
+if provider in PROVIDER_MODELS:
+    model_options = PROVIDER_MODELS[provider]
+    current_model = st.session_state.get('llm_model')
+    model_index = model_options.index(current_model) if current_model in model_options else 0
+    st.session_state.llm_model = st.sidebar.selectbox(
+        'Model',
+        model_options,
+        index=model_index,
+    )
+else:
+    st.session_state.llm_model = None
+
+st.session_state.llm_api_key = None
+
+if provider in ('openai', 'anthropic'):
+    auto_key = load_api_key(provider)
+
+    if auto_key:
+        st.sidebar.success(f'{provider.title()} key loaded from environment/secrets')
+        st.session_state.llm_api_key = auto_key
+    else:
+        manual_key = st.sidebar.text_input(
+            f'{provider.title()} API key',
+            type='password',
+            placeholder='sk-...' if provider == 'openai' else 'sk-ant-...',
+        )
+
+        if manual_key:
+            st.session_state.llm_api_key = manual_key
+
+if provider == 'ollama':
+    st.sidebar.caption('Ollama must be running on localhost:11434.')
+
+premium_models = {'gpt-4o', 'claude-sonnet-4-6'}
+selected_model = st.session_state.get('llm_model')
+
+if selected_model in premium_models:
+    output_rate = COST_PER_1K_TOKENS[selected_model]['output']
+    st.sidebar.warning(
+        f'{selected_model} is a premium model. Each question costs approximately '
+        f'${output_rate * 0.5:.4f}-${output_rate * 2:.4f}. '
+        'Consider using the smaller model first.'
+    )
+
+tracker = st.session_state.usage_tracker
+
+if tracker.total_tokens() > 0:
+    st.sidebar.caption(f'Session usage: {tracker.summary()}')
 
 if mode == 'EnergyTypeNet (pre-loaded)':
     st.sidebar.markdown('---')

@@ -38,7 +38,11 @@ def test_build_dataset_prompt_stays_grounded():
     prompt = build_dataset_prompt('Rows: 10', 'What matters most?')
 
     assert 'only use the computed facts' in prompt
+    assert 'allowed and expected to discuss model selection' in prompt
+    assert 'do not refuse the ML topic' in prompt
     assert 'Do not suggest training models that are already listed as evaluated' in prompt
+    assert 'cannot execute code' in prompt
+    assert 'Do not say "I will compute"' in prompt
     assert 'Rows: 10' in prompt
     assert 'What matters most?' in prompt
 

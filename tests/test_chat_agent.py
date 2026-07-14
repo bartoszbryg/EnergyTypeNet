@@ -90,6 +90,10 @@ def test_contextual_prompt_includes_history_and_instruction():
     assert 'Logistic Regression is best.' in prompt
     assert 'follow-up question' in prompt
     assert 'Test accuracy: 0.800' in prompt
+    assert 'allowed and expected to discuss model selection' in prompt
+    assert 'do not refuse the ML topic' in prompt
+    assert 'cannot execute code' in prompt
+    assert 'Do not say "I will compute"' in prompt
 
 
 def test_handle_follow_up_uses_previous_answer_type():

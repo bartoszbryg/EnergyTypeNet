@@ -31,7 +31,7 @@ The research part answers a specific question I had: is the accuracy ceiling cau
 - Upload custom CSV files and run a lightweight AutoML workflow.
 - Generate dataset reports and grounded natural-language explanations.
 - Ask multi-turn dataset questions with chat history, suggested follow-ups and JSON export.
-- Optionally stream local LLM answers with Ollama when running locally.
+- Optionally stream LLM answers with local Ollama or hosted OpenAI/Anthropic providers.
 
 ---
 
@@ -422,22 +422,26 @@ Turns any uploaded CSV into a guided AutoML-style analysis:
 - answers multi-turn questions about model quality, missingness, important features, task type, overfitting and leakage
 - suggests follow-up questions and exports the chat history as JSON
 
-The assistant uses deterministic, computed-statistic answers by default. Local LLM streaming is optional and only runs when Ollama is installed and active on the user's machine.
+The assistant uses deterministic, computed-statistic answers by default. LLM streaming is optional: local Ollama works without API cost, while hosted OpenAI and Anthropic modes require user-provided API keys and show estimated session usage.
+
+The chat assistant is intentionally constrained: it explains existing computed results and recommends the next diagnostic step, but it does not run arbitrary Python or trigger new model computations directly from chat. A future `agent-computation-tools` branch will add safe, predefined diagnostic actions such as feature importance, leakage checks and model-complexity summaries.
 
 The upload workflow is guarded for normal public use: it expects CSV input, removes empty rows and columns, checks whether a target can be modeled, rejects continuous numeric targets accidentally used as classification labels and shows friendly messages when the selected dataset cannot be prepared.
 
 ---
 
-## Local LLM Explanations
+## LLM Provider Configuration
 
 The app is free-first by design.
 
 - Deterministic dataset explanations work locally and in public deployments without any API key.
 - Local Ollama streaming is free, but only works on a machine with Ollama installed.
-- Hosted LLM streaming can be added later, but it may cost money because API providers usually charge per token.
-- Public demos should keep hosted LLM mode disabled by default unless usage limits are added.
+- Hosted OpenAI and Anthropic streaming is optional and may cost money because API providers usually charge per token.
+- Public demos should keep the provider set to **None (deterministic only)** by default unless usage limits are added.
 
-To test local LLM streaming:
+### Local Ollama
+
+To test local Ollama streaming:
 
 ```bash
 ollama pull llama3.1
@@ -445,7 +449,37 @@ ollama run llama3.1
 streamlit run dashboard.py
 ```
 
-Then open **AI Dataset Assistant**, enable **Ollama explanations**, keep the model as `llama3.1` and ask a dataset question.
+Then open **AI Dataset Assistant**, select **Ollama (local)** in the sidebar, keep the model as `llama3.1` and ask a dataset question.
+
+### Hosted OpenAI or Anthropic
+
+Hosted providers are optional. Their SDKs are intentionally commented out in `requirements.txt` so users who only want the core ML project do not need hosted LLM packages.
+
+Install only what you need:
+
+```bash
+pip install openai
+pip install anthropic
+```
+
+For local development, copy `.env.example` to `.env` and add your keys:
+
+```text
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+For Streamlit Cloud, copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` locally for testing, or add equivalent secrets in the Streamlit Cloud settings:
+
+```toml
+[openai]
+api_key = "sk-..."
+
+[anthropic]
+api_key = "sk-ant-..."
+```
+
+Never commit `.env` or `.streamlit/secrets.toml`; both are ignored by Git. The dashboard also supports manually entering an API key in the sidebar for a temporary session. Session token and cost estimates are approximate and shown only for hosted provider calls.
 
 ---
 
@@ -484,7 +518,7 @@ src/
   chat_agent.py                      Multi-turn dataset chat history, routing and suggestions
   data.py                            Energy dataset loading and feature engineering
   evaluation.py                      Evaluation and plotting helpers
-  llm_assistant.py                   Optional local Ollama prompt/streaming helpers
+  llm_assistant.py                   Ollama/OpenAI/Anthropic streaming helpers and usage tracking
   models.py                          Custom NumPy classifiers, regressors, projections, clustering models and MLP
   predict.py                         CLI prediction helpers
   synthetic_experiment.py            Synthetic separability experiment
@@ -496,6 +530,7 @@ tests/
   test_data.py
   test_chat_agent.py
   test_llm_assistant.py
+  test_llm_provider.py
   test_models.py
 
 docs/
@@ -636,7 +671,7 @@ Expected current result:
 
 ```text
 No broken requirements found.
-49 passed
+90 passed
 compileall passed
 ```
 
@@ -704,10 +739,11 @@ The AI Dataset Assistant extends the project beyond this one dataset by making t
 
 Planned future improvements:
 
+- `agent-computation-tools`: let the dataset chat trigger safe predefined diagnostics such as feature importance, overfitting checks, leakage checks, correlation summaries and model-complexity reports.
 - `deploy-streamlit`: add a public Streamlit deployment link and screenshots after the app is stable.
-- `hosted-llm-provider`: add optional API-key based hosted LLM streaming with usage controls.
 - `refactor-models-package`: split `src/models.py` into focused modules after the model suite stabilizes.
 
 Completed extension branches:
 
 - `dataset-chat-agent`: added multi-turn dataset chat, contextual follow-up routing, suggested questions and JSON chat export.
+- `hosted-llm-provider`: added optional OpenAI and Anthropic streaming, provider selection, secure key templates, deterministic fallback and approximate usage tracking.
