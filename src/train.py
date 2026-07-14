@@ -94,7 +94,7 @@ def build_models(random_state: int = 42) -> dict:
         StandardScaler(),
         BaggingClassifierCustom(
             base_estimator=DecisionTreeClassifierCustom(max_depth=5),
-            n_estimators=50,
+            n_estimators=15,
             random_state=random_state,
         ),
     )
@@ -103,7 +103,7 @@ def build_models(random_state: int = 42) -> dict:
         StandardScaler(),
         AdaBoostClassifierCustom(
             base_estimator=DecisionTreeClassifierCustom(max_depth=1),
-            n_estimators=100,
+            n_estimators=30,
             learning_rate=0.5,
             random_state=random_state,
         ),
