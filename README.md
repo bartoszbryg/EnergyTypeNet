@@ -4,7 +4,7 @@ I built EnergyTypeNet to predict whether a building is Residential, Commercial o
 
 On top of those custom models, I trained sklearn Logistic Regression, MLP and XGBoost baselines, then compared the full model set with 5-fold stratified cross-validation, holdout evaluation, confusion matrices, ROC/AUC curves, precision-recall curves and learning curves. I also added soft-voting, stacking, custom Bagging, custom AdaBoost, Extra Trees and HistGradientBoosting experiments to test when combining learners improves performance over a single model. The project is packaged like a real machine-learning system: it includes MLflow experiment tracking, a reproducible training script, saved model artifacts, a FastAPI prediction service, Docker deployment support, GitHub Actions CI and a Streamlit dashboard.
 
-The project also grew into a reusable AutoML-style tool through the AI Dataset Assistant. Instead of working only on the original building-energy dataset, the dashboard can now accept a custom CSV file, profile the dataset, detect missing values and data types, suggest possible target columns, infer whether the task should be classification or regression, recommend usable feature columns, rank features with mutual information, compare all selected features against a compact feature set, train multiple baseline models and generate a short natural-language dataset report grounded in computed results. It also has a multi-turn dataset chat assistant with deterministic grounded answers, context-aware follow-up routing, suggested questions, JSON chat export and optional local LLM streaming through Ollama, so the explanations can feel more natural while still staying tied to the actual model outputs.
+The project also grew into a reusable AutoML-style tool through the AI Dataset Assistant. Instead of working only on the original building-energy dataset, the dashboard can now accept a custom CSV file, profile the dataset, detect missing values and data types, suggest possible target columns, infer whether the task should be classification or regression, recommend usable feature columns, rank features with mutual information, compare all selected features against a compact feature set, train multiple baseline models and generate a short natural-language dataset report grounded in computed results. It also has a multi-turn dataset chat assistant with deterministic grounded answers, context-aware follow-up routing, safe diagnostic computation tools, suggested questions, JSON chat export and optional local or hosted LLM streaming, so the explanations can feel more natural while still staying tied to actual model outputs.
 
 The research part answers a specific question I had: is the accuracy ceiling caused by too little data, or by the classes being too similar in feature space? Notebook 06 runs a synthetic experiment showing that the issue is not caused by insufficient data, so collecting more data would not fix it. One important finding was that the extended feature set can produce near-perfect validation scores, but that is not necessarily a better scientific result because some features may encode the label too directly. The more honest benchmark is the smaller core-feature setup, where performance is lower but more realistic.
 
@@ -420,11 +420,13 @@ Turns any uploaded CSV into a guided AutoML-style analysis:
 - compares full selected features against compact selected features
 - generates a short dataset report
 - answers multi-turn questions about model quality, missingness, important features, task type, overfitting and leakage
+- keeps the user's question visible while the assistant thinks and streams the response
+- runs safe predefined chat-triggered computations for model gaps, CV/test gaps, feature strength, compact-vs-full feature comparisons, simple target correlations and model-complexity summaries
 - suggests follow-up questions and exports the chat history as JSON
 
-The assistant uses deterministic, computed-statistic answers by default. LLM streaming is optional: local Ollama works without API cost, while hosted OpenAI and Anthropic modes require user-provided API keys and show estimated session usage.
+The assistant uses deterministic, computed-statistic answers by default. If the user asks a question that needs more evidence, the assistant can run bounded diagnostic computations and show the resulting tables in the dashboard. LLM streaming is optional: local Ollama works without API cost, while hosted OpenAI and Anthropic modes require user-provided API keys and show estimated session usage.
 
-The chat assistant is intentionally constrained: it explains existing computed results and recommends the next diagnostic step, but it does not run arbitrary Python or trigger new model computations directly from chat. A future `agent-computation-tools` branch will add safe, predefined diagnostic actions such as feature importance, leakage checks and model-complexity summaries.
+The chat assistant is intentionally constrained: it can run only safe predefined diagnostics from already prepared dashboard objects, then optionally pass those computed summaries to an LLM provider for a more natural explanation. It does not execute arbitrary Python, access files, mutate the dataset or let the LLM decide which code to run.
 
 The upload workflow is guarded for normal public use: it expects CSV input, removes empty rows and columns, checks whether a target can be modeled, rejects continuous numeric targets accidentally used as classification labels and shows friendly messages when the selected dataset cannot be prepared.
 
@@ -513,6 +515,7 @@ notebooks/
   19_ensemble_extensions.ipynb
 
 src/
+  agent_tools.py                     Safe chat-triggered diagnostic computations for the Dataset Assistant
   api.py                             FastAPI prediction service
   automl.py                          CSV profiling, feature suggestions, baselines and clustering diagnostics
   chat_agent.py                      Multi-turn dataset chat history, routing and suggestions
@@ -526,6 +529,7 @@ src/
 
 tests/
   test_api.py
+  test_agent_tools.py
   test_automl.py
   test_data.py
   test_chat_agent.py
@@ -671,7 +675,7 @@ Expected current result:
 
 ```text
 No broken requirements found.
-90 passed
+97 passed
 compileall passed
 ```
 
@@ -731,7 +735,7 @@ The RNN notebook adds recurrent neural-network foundations using synthetic seque
 
 The ensemble-extensions notebook adds Bagging, AdaBoost, Extra Trees and HistGradientBoosting diagnostics. It shows that ensemble value depends on both base-model accuracy and error diversity, and it connects the custom decision-tree implementation to meta-estimators rather than treating it as an isolated model.
 
-The AI Dataset Assistant extends the project beyond this one dataset by making the workflow reusable for other tabular CSV files while keeping explanations grounded in computed statistics. It now supports multi-turn chat history, context-aware follow-up questions, suggested next questions, optional local Ollama streaming and downloadable JSON chat exports.
+The AI Dataset Assistant extends the project beyond this one dataset by making the workflow reusable for other tabular CSV files while keeping explanations grounded in computed statistics. It now supports multi-turn chat history, context-aware follow-up questions, safe diagnostic computation tools, suggested next questions, optional local or hosted LLM streaming and downloadable JSON chat exports.
 
 ---
 
@@ -739,7 +743,6 @@ The AI Dataset Assistant extends the project beyond this one dataset by making t
 
 Planned future improvements:
 
-- `agent-computation-tools`: let the dataset chat trigger safe predefined diagnostics such as feature importance, overfitting checks, leakage checks, correlation summaries and model-complexity reports.
 - `deploy-streamlit`: add a public Streamlit deployment link and screenshots after the app is stable.
 - `refactor-models-package`: split `src/models.py` into focused modules after the model suite stabilizes.
 
@@ -747,3 +750,4 @@ Completed extension branches:
 
 - `dataset-chat-agent`: added multi-turn dataset chat, contextual follow-up routing, suggested questions and JSON chat export.
 - `hosted-llm-provider`: added optional OpenAI and Anthropic streaming, provider selection, secure key templates, deterministic fallback and approximate usage tracking.
+- `agent-computation-tools`: added safe chat-triggered diagnostics for model gaps, feature strength, target correlations, feature-set comparisons and model-complexity summaries.

@@ -19,6 +19,10 @@ def test_classify_question_model_performance():
     assert classify_question('which model has the best accuracy?', {}, None) == 'model_performance'
 
 
+def test_classify_question_computation_request():
+    assert classify_question('Can you compute model complexity?', {}, None) == 'computation'
+
+
 def test_chat_history_max_turns():
     history = ChatHistory(max_turns=4)
 
@@ -84,6 +88,7 @@ def test_contextual_prompt_includes_history_and_instruction():
         results,
         ranking,
         'follow_up',
+        tool_result='Tool result: Logistic Regression and KNN are tied.',
     )
 
     assert 'Recent conversation:' in prompt
@@ -91,9 +96,11 @@ def test_contextual_prompt_includes_history_and_instruction():
     assert 'follow-up question' in prompt
     assert 'Test accuracy: 0.800' in prompt
     assert 'allowed and expected to discuss model selection' in prompt
-    assert 'do not refuse the ML topic' in prompt
-    assert 'cannot execute code' in prompt
-    assert 'Do not say "I will compute"' in prompt
+    assert 'Do not refuse the ML topic' in prompt
+    assert 'use the tool result' in prompt
+    assert 'Do not imply that calculations outside the provided tool result' in prompt
+    assert 'Computed tool result:' in prompt
+    assert 'Logistic Regression and KNN are tied' in prompt
 
 
 def test_handle_follow_up_uses_previous_answer_type():

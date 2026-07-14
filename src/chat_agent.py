@@ -8,6 +8,7 @@ from typing import Any
 
 import pandas as pd
 
+from src.agent_tools import should_run_computation
 from src.automl import PreparedDataset, answer_dataset_question
 from src.llm_assistant import build_dataset_context
 
@@ -96,6 +97,9 @@ def classify_question(
     q = question.lower().strip()
     words = set(q.replace('?', ' ').replace(',', ' ').split())
 
+    if should_run_computation(q):
+        return 'computation'
+
     follow_up_starts = (
         'why',
         'how so',
@@ -136,10 +140,12 @@ def build_contextualized_prompt(
     results: pd.DataFrame | None,
     feature_ranking: pd.DataFrame | None,
     question_type: str,
+    tool_result: str | None = None,
 ) -> str:
     """Build a grounded LLM prompt that includes recent conversation history."""
     dataset_context = build_dataset_context(profile, prepared, results, feature_ranking)
     conversation_context = history.to_context_string(n=4)
+    tool_context = f'\n\nComputed tool result:\n{tool_result}' if tool_result else ''
     type_instructions = {
         'follow_up': (
             'The user is asking a follow-up question. Refer to the previous '
@@ -167,16 +173,14 @@ def build_contextualized_prompt(
         'not enough, say what should be computed next. You cannot execute code, '
         'train models, compute new metrics, access files, change dashboard state, '
         'or perform actions from this chat. If the user asks you to do something, '
-        'do not refuse the ML topic; say you cannot run new computations from '
-        'chat yet, summarize the existing computed results, and name the exact '
-        'dashboard step or computation needed next. Do not say "I will compute", '
-        '"I can perform", "I will run", or imply that new calculations were '
+        'use the tool result if it is included below. Do not refuse the ML topic. '
+        'Do not imply that calculations outside the provided tool result were '
         'completed.\n\n'
-        f'Computed facts:\n{dataset_context}\n\n'
+        f'Computed facts:\n{dataset_context}{tool_context}\n\n'
         f'Recent conversation:\n{conversation_context or "No previous conversation."}\n\n'
         f'Current question: {question}\n\n'
         f'Instruction: {instruction}\n'
-        'Answer concisely in 2-3 sentences. Ground every claim in the statistics '
+        'Answer concisely. Ground every claim in the statistics '
         'shown in the context block above.'
     )
 
