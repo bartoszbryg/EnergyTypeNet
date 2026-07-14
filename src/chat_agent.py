@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import pandas as pd
@@ -19,10 +19,22 @@ class ChatMessage:
 
     role: str
     content: str
-    source: str
-    timestamp: str
-    question_type: str
-    grounded: bool
+    source: str = 'user'
+    timestamp: str = ''
+    question_type: str = 'general'
+    grounded: bool = False
+
+    def __post_init__(self) -> None:
+        if self.role not in {'user', 'assistant'}:
+            raise ValueError("role must be either 'user' or 'assistant'")
+
+        if self.source not in {'user', 'deterministic', 'ollama', 'hosted', 'fallback'}:
+            raise ValueError(
+                "source must be one of 'user', 'deterministic', 'ollama', 'hosted', or 'fallback'"
+            )
+
+        if not self.timestamp:
+            self.timestamp = utc_timestamp()
 
 
 class ChatHistory:
@@ -83,7 +95,7 @@ class ChatHistory:
 
 def utc_timestamp() -> str:
     """Return a compact UTC timestamp for chat exports."""
-    return datetime.utcnow().isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def classify_question(
@@ -111,22 +123,90 @@ def classify_question(
     )
     pronoun_signals = {'that', 'it', 'this'}
 
-    if q.startswith(follow_up_starts) or words.intersection(pronoun_signals):
+    recommendation_signals = [
+        'should i',
+        'should',
+        'recommend',
+        'suggest',
+        'what would you',
+        'would you',
+        'how should',
+        'what is the best way',
+    ]
+    has_recommendation_signal = any(signal in q for signal in recommendation_signals)
+
+    if q.startswith(follow_up_starts) or (
+        words.intersection(pronoun_signals) and not has_recommendation_signal
+    ):
         return 'follow_up'
 
-    if any(signal in q for signal in ['vs', 'versus', 'compare', 'difference', 'better than']):
+    if any(
+        signal in q
+        for signal in [
+            'vs',
+            'versus',
+            'compare',
+            'difference between',
+            'difference',
+            'better than',
+            'worse than',
+            'which is',
+        ]
+    ):
         return 'comparison'
 
-    if any(signal in q for signal in ['should', 'recommend', 'suggest', 'would you']):
+    if any(
+        signal in q
+        for signal in recommendation_signals
+    ):
         return 'recommendation'
 
-    if any(signal in q for signal in ['accuracy', 'f1', 'score', 'model', 'performance', 'best']):
+    if any(
+        signal in q
+        for signal in [
+            'accuracy',
+            'f1',
+            'score',
+            'model',
+            'performance',
+            'best',
+            'worst',
+            'result',
+            'prediction',
+            'classify',
+        ]
+    ):
         return 'model_performance'
 
-    if any(signal in q for signal in ['feature', 'important', 'relevant', 'mutual', 'which column']):
+    if any(
+        signal in q
+        for signal in [
+            'feature',
+            'important',
+            'relevant',
+            'mutual information',
+            'mutual',
+            'which column',
+            'variable',
+            'predictor',
+        ]
+    ):
         return 'feature_importance'
 
-    if any(signal in q for signal in ['how many', 'rows', 'columns', 'missing', 'type', 'shape']):
+    if any(
+        signal in q
+        for signal in [
+            'how many',
+            'rows',
+            'columns',
+            'missing',
+            'type',
+            'shape',
+            'size',
+            'duplicate',
+            'null',
+        ]
+    ):
         return 'dataset_stats'
 
     return 'general'
@@ -158,6 +238,10 @@ def build_contextualized_prompt(
         'recommendation': (
             'Give a concrete recommendation based only on the statistics in '
             'the context. Do not hallucinate new numbers.'
+        ),
+        'model_performance': (
+            'Cite specific accuracy, F1, R2, MAE, or other available metric '
+            'values from the context when making model-performance claims.'
         ),
     }
     instruction = type_instructions.get(

@@ -19,8 +19,25 @@ def test_classify_question_model_performance():
     assert classify_question('which model has the best accuracy?', {}, None) == 'model_performance'
 
 
+def test_chat_message_generates_timestamp_when_omitted():
+    message = ChatMessage(role='user', content='hello')
+
+    assert message.timestamp
+    assert message.source == 'user'
+    assert message.question_type == 'general'
+    assert message.grounded is False
+
+
 def test_classify_question_computation_request():
     assert classify_question('Can you compute model complexity?', {}, None) == 'computation'
+
+
+def test_classify_question_prompt_keyword_coverage():
+    assert classify_question('Show prediction results', {}, None) == 'model_performance'
+    assert classify_question('Which predictor is strongest?', {}, None) == 'feature_importance'
+    assert classify_question('Are there duplicate or null values?', {}, None) == 'dataset_stats'
+    assert classify_question('Which is better than the other?', {}, None) == 'comparison'
+    assert classify_question('How should I use this model?', {}, None) == 'recommendation'
 
 
 def test_chat_history_max_turns():
@@ -101,6 +118,28 @@ def test_contextual_prompt_includes_history_and_instruction():
     assert 'Do not imply that calculations outside the provided tool result' in prompt
     assert 'Computed tool result:' in prompt
     assert 'Logistic Regression and KNN are tied' in prompt
+
+
+def test_contextual_prompt_model_performance_instruction_mentions_metrics():
+    df = pd.DataFrame({
+        'feature': [0, 1, 2, 3, 4, 5],
+        'target': ['a', 'a', 'b', 'b', 'c', 'c'],
+    })
+    profile = profile_dataset(df)
+    prepared = prepare_dataset(df, 'target', ['feature'], 'classification')
+
+    prompt = build_contextualized_prompt(
+        'Which model performs best?',
+        ChatHistory(),
+        profile,
+        prepared,
+        pd.DataFrame(),
+        pd.DataFrame(),
+        'model_performance',
+    )
+
+    assert 'Cite specific accuracy' in prompt
+    assert 'F1' in prompt
 
 
 def test_handle_follow_up_uses_previous_answer_type():
