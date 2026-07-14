@@ -8,7 +8,7 @@ from pathlib import Path
 import urllib.error
 import urllib.request
 from collections.abc import Generator
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import pandas as pd
@@ -456,7 +456,7 @@ class UsageTracker:
         response: str,
     ) -> None:
         self._records.append({
-            'timestamp': datetime.now(UTC).isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'provider': provider,
             'model': model,
             'input_tokens': estimate_tokens(prompt),
