@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import pandas as pd
 
+from src.agent_tools import should_run_computation
 from src.automl import PreparedDataset, answer_dataset_question
 from src.llm_assistant import build_dataset_context
 
@@ -18,10 +19,22 @@ class ChatMessage:
 
     role: str
     content: str
-    source: str
-    timestamp: str
-    question_type: str
-    grounded: bool
+    source: str = 'user'
+    timestamp: str = ''
+    question_type: str = 'general'
+    grounded: bool = False
+
+    def __post_init__(self) -> None:
+        if self.role not in {'user', 'assistant'}:
+            raise ValueError("role must be either 'user' or 'assistant'")
+
+        if self.source not in {'user', 'deterministic', 'ollama', 'hosted', 'fallback'}:
+            raise ValueError(
+                "source must be one of 'user', 'deterministic', 'ollama', 'hosted', or 'fallback'"
+            )
+
+        if not self.timestamp:
+            self.timestamp = utc_timestamp()
 
 
 class ChatHistory:
@@ -82,7 +95,7 @@ class ChatHistory:
 
 def utc_timestamp() -> str:
     """Return a compact UTC timestamp for chat exports."""
-    return datetime.utcnow().isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
 def classify_question(
@@ -96,6 +109,9 @@ def classify_question(
     q = question.lower().strip()
     words = set(q.replace('?', ' ').replace(',', ' ').split())
 
+    if should_run_computation(q):
+        return 'computation'
+
     follow_up_starts = (
         'why',
         'how so',
@@ -107,22 +123,90 @@ def classify_question(
     )
     pronoun_signals = {'that', 'it', 'this'}
 
-    if q.startswith(follow_up_starts) or words.intersection(pronoun_signals):
+    recommendation_signals = [
+        'should i',
+        'should',
+        'recommend',
+        'suggest',
+        'what would you',
+        'would you',
+        'how should',
+        'what is the best way',
+    ]
+    has_recommendation_signal = any(signal in q for signal in recommendation_signals)
+
+    if q.startswith(follow_up_starts) or (
+        words.intersection(pronoun_signals) and not has_recommendation_signal
+    ):
         return 'follow_up'
 
-    if any(signal in q for signal in ['vs', 'versus', 'compare', 'difference', 'better than']):
+    if any(
+        signal in q
+        for signal in [
+            'vs',
+            'versus',
+            'compare',
+            'difference between',
+            'difference',
+            'better than',
+            'worse than',
+            'which is',
+        ]
+    ):
         return 'comparison'
 
-    if any(signal in q for signal in ['should', 'recommend', 'suggest', 'would you']):
+    if any(
+        signal in q
+        for signal in recommendation_signals
+    ):
         return 'recommendation'
 
-    if any(signal in q for signal in ['accuracy', 'f1', 'score', 'model', 'performance', 'best']):
+    if any(
+        signal in q
+        for signal in [
+            'accuracy',
+            'f1',
+            'score',
+            'model',
+            'performance',
+            'best',
+            'worst',
+            'result',
+            'prediction',
+            'classify',
+        ]
+    ):
         return 'model_performance'
 
-    if any(signal in q for signal in ['feature', 'important', 'relevant', 'mutual', 'which column']):
+    if any(
+        signal in q
+        for signal in [
+            'feature',
+            'important',
+            'relevant',
+            'mutual information',
+            'mutual',
+            'which column',
+            'variable',
+            'predictor',
+        ]
+    ):
         return 'feature_importance'
 
-    if any(signal in q for signal in ['how many', 'rows', 'columns', 'missing', 'type', 'shape']):
+    if any(
+        signal in q
+        for signal in [
+            'how many',
+            'rows',
+            'columns',
+            'missing',
+            'type',
+            'shape',
+            'size',
+            'duplicate',
+            'null',
+        ]
+    ):
         return 'dataset_stats'
 
     return 'general'
@@ -136,10 +220,12 @@ def build_contextualized_prompt(
     results: pd.DataFrame | None,
     feature_ranking: pd.DataFrame | None,
     question_type: str,
+    tool_result: str | None = None,
 ) -> str:
     """Build a grounded LLM prompt that includes recent conversation history."""
     dataset_context = build_dataset_context(profile, prepared, results, feature_ranking)
     conversation_context = history.to_context_string(n=4)
+    tool_context = f'\n\nComputed tool result:\n{tool_result}' if tool_result else ''
     type_instructions = {
         'follow_up': (
             'The user is asking a follow-up question. Refer to the previous '
@@ -152,6 +238,10 @@ def build_contextualized_prompt(
         'recommendation': (
             'Give a concrete recommendation based only on the statistics in '
             'the context. Do not hallucinate new numbers.'
+        ),
+        'model_performance': (
+            'Cite specific accuracy, F1, R2, MAE, or other available metric '
+            'values from the context when making model-performance claims.'
         ),
     }
     instruction = type_instructions.get(
@@ -167,16 +257,14 @@ def build_contextualized_prompt(
         'not enough, say what should be computed next. You cannot execute code, '
         'train models, compute new metrics, access files, change dashboard state, '
         'or perform actions from this chat. If the user asks you to do something, '
-        'do not refuse the ML topic; say you cannot run new computations from '
-        'chat yet, summarize the existing computed results, and name the exact '
-        'dashboard step or computation needed next. Do not say "I will compute", '
-        '"I can perform", "I will run", or imply that new calculations were '
+        'use the tool result if it is included below. Do not refuse the ML topic. '
+        'Do not imply that calculations outside the provided tool result were '
         'completed.\n\n'
-        f'Computed facts:\n{dataset_context}\n\n'
+        f'Computed facts:\n{dataset_context}{tool_context}\n\n'
         f'Recent conversation:\n{conversation_context or "No previous conversation."}\n\n'
         f'Current question: {question}\n\n'
         f'Instruction: {instruction}\n'
-        'Answer concisely in 2-3 sentences. Ground every claim in the statistics '
+        'Answer concisely. Ground every claim in the statistics '
         'shown in the context block above.'
     )
 
