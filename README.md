@@ -424,62 +424,9 @@ Turns any uploaded CSV into a guided AutoML-style analysis:
 
 The assistant uses deterministic, computed-statistic answers by default. LLM streaming is optional: local Ollama works without API cost, while hosted OpenAI and Anthropic modes require user-provided API keys and show estimated session usage.
 
-The chat assistant is intentionally constrained: it explains existing computed results and recommends the next diagnostic step, but it does not run arbitrary Python or trigger new model computations directly from chat. A future `agent-computation-tools` branch will add safe, predefined diagnostic actions such as feature importance, leakage checks and model-complexity summaries.
+The chat assistant is intentionally constrained: it explains computed results, routes follow-up questions, and can surface safe predefined diagnostics such as feature importance, model ranking, full-vs-compact feature comparison, leakage warnings, missingness checks and model-complexity summaries. It does not run arbitrary Python from chat.
 
 The upload workflow is guarded for normal public use: it expects CSV input, removes empty rows and columns, checks whether a target can be modeled, rejects continuous numeric targets accidentally used as classification labels and shows friendly messages when the selected dataset cannot be prepared.
-
----
-
-## LLM Provider Configuration
-
-The app is free-first by design.
-
-- Deterministic dataset explanations work locally and in public deployments without any API key.
-- Local Ollama streaming is free, but only works on a machine with Ollama installed.
-- Hosted OpenAI and Anthropic streaming is optional and may cost money because API providers usually charge per token.
-- Public demos should keep the provider set to **None (deterministic only)** by default unless usage limits are added.
-
-### Local Ollama
-
-To test local Ollama streaming:
-
-```bash
-ollama pull llama3.1
-ollama run llama3.1
-streamlit run dashboard.py
-```
-
-Then open **AI Dataset Assistant**, select **Ollama (local)** in the sidebar, keep the model as `llama3.1` and ask a dataset question.
-
-### Hosted OpenAI or Anthropic
-
-Hosted providers are optional. Their SDKs are intentionally commented out in `requirements.txt` so users who only want the core ML project do not need hosted LLM packages.
-
-Install only what you need:
-
-```bash
-pip install openai
-pip install anthropic
-```
-
-For local development, copy `.env.example` to `.env` and add your keys:
-
-```text
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-For Streamlit Cloud, copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` locally for testing, or add equivalent secrets in the Streamlit Cloud settings:
-
-```toml
-[openai]
-api_key = "sk-..."
-
-[anthropic]
-api_key = "sk-ant-..."
-```
-
-Never commit `.env` or `.streamlit/secrets.toml`; both are ignored by Git. The dashboard also supports manually entering an API key in the sidebar for a temporary session. Session token and cost estimates are approximate and shown only for hosted provider calls.
 
 ---
 
@@ -513,6 +460,7 @@ notebooks/
   19_ensemble_extensions.ipynb
 
 src/
+  agent_tools.py                      Safe computed diagnostics for the dataset chat assistant
   api.py                             FastAPI prediction service
   automl.py                          CSV profiling, feature suggestions, baselines and clustering diagnostics
   chat_agent.py                      Multi-turn dataset chat history, routing and suggestions
@@ -525,6 +473,7 @@ src/
   train.py                           Production model training script
 
 tests/
+  test_agent_tools.py
   test_api.py
   test_automl.py
   test_data.py
@@ -539,6 +488,8 @@ docs/
 
 dashboard.py                         Streamlit dashboard
 Dockerfile                           API container
+.env.example                         Example environment variables for hosted LLM providers
+.streamlit/secrets.toml.example      Example Streamlit secrets for deployed LLM provider keys
 requirements.txt                     Python dependencies
 pytest.ini                           Test configuration
 ```
@@ -707,6 +658,47 @@ See `docs/DEPLOYMENT.md` for deployment notes.
 
 ---
 
+## LLM Provider Configuration
+
+The dashboard supports four assistant modes:
+
+- **No LLM / deterministic only**: uses computed dataset statistics and needs no API key.
+- **Ollama (local)**: streams from a local Ollama model and needs no hosted API key.
+- **OpenAI**: streams from OpenAI with a user-provided API key.
+- **Anthropic**: streams from Anthropic with a user-provided API key.
+
+### Local Ollama
+
+Ollama must be installed and running on port `11434`. A simple local test is:
+
+```bash
+ollama pull llama3.1
+ollama run llama3.1
+streamlit run dashboard.py
+```
+
+Then open **AI Dataset Assistant**, select **Ollama (local)** in the sidebar, keep the model as `llama3.1` and ask a dataset question.
+
+### OpenAI and Anthropic
+
+Hosted providers are optional and may cost money because API providers usually charge per token. Their SDKs are intentionally commented out in `requirements.txt` so users who only want the core ML project do not need hosted LLM packages.
+
+Install only the provider you need:
+
+```bash
+python -m pip install "openai>=1.30,<2.0"
+python -m pip install "anthropic>=0.25,<1.0"
+```
+
+For local development, copy `.env.example` to `.env` and add your keys. For deployed Streamlit apps, use Streamlit secrets instead. The exact formats are documented in:
+
+- `.env.example`
+- `.streamlit/secrets.toml.example`
+
+Never commit `.env` or `.streamlit/secrets.toml`; both are ignored by Git. The dashboard also supports manually entering an API key in the sidebar for a temporary session. Session token and cost estimates are approximate and shown only for hosted provider calls.
+
+---
+
 ## Current Findings
 
 The core EnergyTypeNet task is intentionally honest about feature limitations. The two-feature benchmark using `Energy Consumption` and `Square Footage` is the cleanest comparison because it avoids features that may encode the label too directly. The synthetic separability experiment supports the idea that the accuracy ceiling is mainly caused by class overlap in feature space, not simply by a shortage of rows.
@@ -731,7 +723,7 @@ The RNN notebook adds recurrent neural-network foundations using synthetic seque
 
 The ensemble-extensions notebook adds Bagging, AdaBoost, Extra Trees and HistGradientBoosting diagnostics. It shows that ensemble value depends on both base-model accuracy and error diversity, and it connects the custom decision-tree implementation to meta-estimators rather than treating it as an isolated model.
 
-The AI Dataset Assistant extends the project beyond this one dataset by making the workflow reusable for other tabular CSV files while keeping explanations grounded in computed statistics. It now supports multi-turn chat history, context-aware follow-up questions, suggested next questions, optional local Ollama streaming and downloadable JSON chat exports.
+The AI Dataset Assistant extends the project beyond this one dataset by making the workflow reusable for other tabular CSV files while keeping explanations grounded in computed statistics. It now supports multi-turn chat history, context-aware follow-up questions, suggested next questions, safe diagnostic tools, optional local Ollama streaming, hosted OpenAI/Anthropic streaming and downloadable JSON chat exports.
 
 ---
 
@@ -739,11 +731,13 @@ The AI Dataset Assistant extends the project beyond this one dataset by making t
 
 Planned future improvements:
 
-- `agent-computation-tools`: let the dataset chat trigger safe predefined diagnostics such as feature importance, overfitting checks, leakage checks, correlation summaries and model-complexity reports.
 - `deploy-streamlit`: add a public Streamlit deployment link and screenshots after the app is stable.
 - `refactor-models-package`: split `src/models.py` into focused modules after the model suite stabilizes.
+- `model-card-export`: export the dataset report, model diagnostics and selected chat explanation as a clean Markdown or PDF model card.
+- `data-validation-suite`: add stronger schema checks, drift checks and feature-leakage warnings for uploaded CSV files.
 
 Completed extension branches:
 
 - `dataset-chat-agent`: added multi-turn dataset chat, contextual follow-up routing, suggested questions and JSON chat export.
+- `agent-computation-tools`: added safe predefined diagnostics for model ranking, feature importance, leakage warnings, missingness checks and full-vs-compact feature comparison.
 - `hosted-llm-provider`: added optional OpenAI and Anthropic streaming, provider selection, secure key templates, deterministic fallback and approximate usage tracking.
