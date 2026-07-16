@@ -45,9 +45,11 @@ from src.agent_tools import run_dataset_computation
 from src.llm_assistant import (
     COST_PER_1K_TOKENS,
     DEFAULT_OLLAMA_MODEL,
+    PROVIDERS,
     PROVIDER_MODELS,
     UsageTracker,
     load_api_key,
+    stream_llm,
     stream_with_fallback,
 )
 from src.chat_agent import (
@@ -1431,6 +1433,8 @@ def render_dataset_assistant():
     with col1:
         if st.button('Clear chat', type='secondary'):
             st.session_state.chat_history.clear()
+            st.session_state.pending_question = None
+            st.session_state.pending_dataset_question = None
             st.rerun()
 
     with col2:
@@ -1453,7 +1457,7 @@ def render_dataset_assistant():
 
     question = None
     if user_input:
-        question = user_input
+        question = user_input.strip()
     elif st.session_state.pending_question:
         question = st.session_state.pending_question
         st.session_state.pending_question = None
@@ -1525,6 +1529,18 @@ def render_dataset_assistant():
 
             answer = deterministic
             provider = st.session_state.get('llm_provider', 'none')
+            response_placeholder = st.empty()
+            response_placeholder.markdown('_Thinking through the dataset..._')
+
+            deterministic = handle_follow_up(
+                question,
+                st.session_state.chat_history,
+                profile_saved,
+                prepared_saved,
+                results_saved,
+                ranking_saved,
+            )
+            answer = deterministic
 
             if provider != 'none':
                 prompt = build_contextualized_prompt(
@@ -1565,12 +1581,13 @@ def render_dataset_assistant():
                     answer = full_response
                     source = actual_source
 
-                    st.session_state.usage_tracker.record(
-                        actual_source,
-                        st.session_state.get('llm_model') or DEFAULT_OLLAMA_MODEL,
-                        prompt,
-                        full_response,
-                    )
+                    if actual_source != 'deterministic':
+                        st.session_state.usage_tracker.record(
+                            actual_source,
+                            st.session_state.get('llm_model') or DEFAULT_OLLAMA_MODEL,
+                            prompt,
+                            full_response,
+                        )
                 except Exception as exc:
                     thinking_placeholder.empty()
                     source = 'deterministic'
@@ -1578,10 +1595,16 @@ def render_dataset_assistant():
                         f'LLM streaming failed ({exc}), so the deterministic '
                         'assistant answered instead.'
                     )
-                    st.markdown(answer)
+                    response_placeholder.markdown(answer)
             else:
                 thinking_placeholder.empty()
-                st.markdown(answer)
+                response_placeholder.markdown(answer)
+
+            st.caption(
+                f"Source: {source} | "
+                f"{q_type.replace('_', ' ')} | "
+                f"{utc_timestamp()[:10]}"
+            )
 
             if tool_result is not None and tool_result.tables:
                 with st.expander('Computed diagnostic tables', expanded=False):
@@ -1609,72 +1632,81 @@ mode = st.sidebar.radio(
     ['EnergyTypeNet (pre-loaded)', 'Custom Dataset', 'AI Dataset Assistant'],
 )
 
-st.sidebar.markdown('---')
-st.sidebar.subheader('LLM Provider')
+if mode == 'AI Dataset Assistant':
+    st.sidebar.markdown('---')
+    st.sidebar.subheader('LLM Provider')
 
-provider = st.sidebar.selectbox(
-    'Provider',
-    options=['none', 'ollama', 'openai', 'anthropic'],
-    format_func=lambda item: {
+    provider_labels = {
         'none': 'None (deterministic only)',
         'ollama': 'Ollama (local)',
         'openai': 'OpenAI (API key required)',
         'anthropic': 'Anthropic (API key required)',
-    }[item],
-    index=['none', 'ollama', 'openai', 'anthropic'].index(
-        st.session_state.get('llm_provider', 'none')
-    ),
-)
-st.session_state.llm_provider = provider
+    }
+    provider_options = ['none'] + [provider for provider in PROVIDERS if provider != 'none']
+    current_provider = st.session_state.get('llm_provider', 'none')
 
-if provider in PROVIDER_MODELS:
-    model_options = PROVIDER_MODELS[provider]
-    current_model = st.session_state.get('llm_model')
-    model_index = model_options.index(current_model) if current_model in model_options else 0
-    st.session_state.llm_model = st.sidebar.selectbox(
-        'Model',
-        model_options,
-        index=model_index,
+    if current_provider not in provider_options:
+        current_provider = 'none'
+
+    provider = st.sidebar.selectbox(
+        'Provider',
+        options=provider_options,
+        format_func=lambda item: provider_labels[item],
+        index=provider_options.index(current_provider),
     )
-else:
-    st.session_state.llm_model = None
+    st.session_state.llm_provider = provider
 
-st.session_state.llm_api_key = None
-
-if provider in ('openai', 'anthropic'):
-    auto_key = load_api_key(provider)
-
-    if auto_key:
-        st.sidebar.success(f'{provider.title()} key loaded from environment/secrets')
-        st.session_state.llm_api_key = auto_key
+    if provider in PROVIDER_MODELS:
+        model_options = PROVIDER_MODELS[provider]
+        current_model = st.session_state.get('llm_model')
+        model_index = model_options.index(current_model) if current_model in model_options else 0
+        st.session_state.llm_model = st.sidebar.selectbox(
+            'Model',
+            model_options,
+            index=model_index,
+        )
     else:
-        manual_key = st.sidebar.text_input(
-            f'{provider.title()} API key',
-            type='password',
-            placeholder='sk-...' if provider == 'openai' else 'sk-ant-...',
+        st.session_state.llm_model = None
+
+    st.session_state.llm_api_key = None
+
+    if provider in ('openai', 'anthropic'):
+        auto_key = load_api_key(provider)
+
+        if auto_key:
+            st.sidebar.success(f'{provider.title()} key loaded from environment/secrets')
+            st.session_state.llm_api_key = auto_key
+        else:
+            manual_key = st.sidebar.text_input(
+                f'{provider.title()} API key',
+                type='password',
+                placeholder='sk-...' if provider == 'openai' else 'sk-ant-...',
+            )
+
+            if manual_key:
+                st.session_state.llm_api_key = manual_key
+
+    if provider == 'ollama':
+        st.sidebar.caption(
+            'Ollama must be running on localhost:11434. '
+            'Start it with `ollama run llama3.1`.'
         )
 
-        if manual_key:
-            st.session_state.llm_api_key = manual_key
+    premium_models = {'gpt-4o', 'claude-sonnet-4-6'}
+    selected_model = st.session_state.get('llm_model')
 
-if provider == 'ollama':
-    st.sidebar.caption('Ollama must be running on localhost:11434.')
+    if selected_model in premium_models:
+        output_rate = COST_PER_1K_TOKENS[selected_model]['output']
+        st.sidebar.warning(
+            f'{selected_model} is a premium model. Each question costs approximately '
+            f'${output_rate * 0.5:.4f}-${output_rate * 2:.4f}. '
+            'Consider using the smaller model first.'
+        )
 
-premium_models = {'gpt-4o', 'claude-sonnet-4-6'}
-selected_model = st.session_state.get('llm_model')
+    tracker = st.session_state.usage_tracker
 
-if selected_model in premium_models:
-    output_rate = COST_PER_1K_TOKENS[selected_model]['output']
-    st.sidebar.warning(
-        f'{selected_model} is a premium model. Each question costs approximately '
-        f'${output_rate * 0.5:.4f}-${output_rate * 2:.4f}. '
-        'Consider using the smaller model first.'
-    )
-
-tracker = st.session_state.usage_tracker
-
-if tracker.total_tokens() > 0:
-    st.sidebar.caption(f'Session usage: {tracker.summary()}')
+    if tracker.total_tokens() > 0:
+        st.sidebar.caption(f'Session usage: {tracker.summary()}')
 
 if mode == 'EnergyTypeNet (pre-loaded)':
     st.sidebar.markdown('---')
