@@ -1,25 +1,42 @@
-"""Public model API for EnergyTypeNet."""
+"""Backward-compatible public API; new code may import from family submodules."""
 
-from .classification import AttentionClassifier, LogisticRegressionOvR, LogisticRegressionSoftmax
-from .linear import LinearRegressionGD, LinearRegressionNormal, Perceptron, AdalineGD
-from .trees import Node, DecisionTreeClassifierCustom, DecisionTreeRegressorCustom
+from ._base import Node
+from .linear import (
+    AdalineGD,
+    AttentionClassifier,
+    LinearRegressionGD,
+    LinearRegressionNormal,
+    LogisticRegressionOvR,
+    LogisticRegressionSoftmax,
+    Perceptron,
+)
+from .regularized import (
+    ElasticNetCustom,
+    LassoRegressionCustom,
+    RegularizedLogisticRegression,
+    RidgeRegressionCustom,
+)
+from .trees import DecisionTreeClassifierCustom, DecisionTreeRegressorCustom
 from .svm import SVMClassifierCustom
 from .probabilistic import GaussianNaiveBayes, MultinomialNaiveBayes, BernoulliNaiveBayes, BayesianLinearRegression
-from .regularization import RidgeRegressionCustom, LassoRegressionCustom, ElasticNetCustom, RegularizedLogisticRegression
+from .dimensionality import PCACustom, LDACustom, KernelPCACustom
 from .clustering import KMeansCustom, DBSCANCustom, GaussianMixtureModelCustom, AgglomerativeCustom
-from .ensemble import BaggingClassifierCustom, BaggingRegressorCustom, AdaBoostClassifierCustom
-from .decomposition import PCACustom, LDACustom, KernelPCACustom
 from .neural import ActivationFunctions, MLPCustom
+from .ensemble import BaggingClassifierCustom, BaggingRegressorCustom, AdaBoostClassifierCustom
 
 __all__ = [
-    'AttentionClassifier',
-    'LogisticRegressionOvR',
-    'LogisticRegressionSoftmax',
+    'Node',
     'LinearRegressionGD',
     'LinearRegressionNormal',
     'Perceptron',
     'AdalineGD',
-    'Node',
+    'AttentionClassifier',
+    'LogisticRegressionOvR',
+    'LogisticRegressionSoftmax',
+    'RidgeRegressionCustom',
+    'LassoRegressionCustom',
+    'ElasticNetCustom',
+    'RegularizedLogisticRegression',
     'DecisionTreeClassifierCustom',
     'DecisionTreeRegressorCustom',
     'SVMClassifierCustom',
@@ -27,20 +44,16 @@ __all__ = [
     'MultinomialNaiveBayes',
     'BernoulliNaiveBayes',
     'BayesianLinearRegression',
-    'RidgeRegressionCustom',
-    'LassoRegressionCustom',
-    'ElasticNetCustom',
-    'RegularizedLogisticRegression',
+    'PCACustom',
+    'LDACustom',
+    'KernelPCACustom',
     'KMeansCustom',
     'DBSCANCustom',
     'GaussianMixtureModelCustom',
     'AgglomerativeCustom',
+    'ActivationFunctions',
+    'MLPCustom',
     'BaggingClassifierCustom',
     'BaggingRegressorCustom',
     'AdaBoostClassifierCustom',
-    'PCACustom',
-    'LDACustom',
-    'KernelPCACustom',
-    'ActivationFunctions',
-    'MLPCustom',
 ]

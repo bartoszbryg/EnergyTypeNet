@@ -1,10 +1,10 @@
-"""Custom classification and regression models for EnergyTypeNet."""
+"""Custom support-vector-machine models."""
 
-import inspect
-from dataclasses import dataclass
 import numpy as np
-from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, TransformerMixin, clone
+from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.kernel_approximation import RBFSampler
+
+__all__ = ["SVMClassifierCustom"]
 
 class SVMClassifierCustom(ClassifierMixin, BaseEstimator):
     """Binary soft-margin SVM trained with subgradient descent."""

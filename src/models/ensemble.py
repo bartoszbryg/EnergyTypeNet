@@ -1,12 +1,12 @@
-"""Custom classification and regression models for EnergyTypeNet."""
+"""Custom bagging and boosting models."""
 
 import inspect
-from dataclasses import dataclass
 import numpy as np
-from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, TransformerMixin, clone
-from sklearn.kernel_approximation import RBFSampler
+from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, clone
 
 from .trees import DecisionTreeClassifierCustom, DecisionTreeRegressorCustom
+
+__all__ = ["BaggingClassifierCustom", "BaggingRegressorCustom", "AdaBoostClassifierCustom"]
 
 class BaggingClassifierCustom(ClassifierMixin, BaseEstimator):
     """Bootstrap aggregation classifier using custom decision trees by default."""

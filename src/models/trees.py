@@ -1,22 +1,11 @@
-"""Custom classification and regression models for EnergyTypeNet."""
+"""Custom decision-tree models."""
 
-import inspect
-from dataclasses import dataclass
 import numpy as np
-from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, TransformerMixin, clone
-from sklearn.kernel_approximation import RBFSampler
+from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
 
-@dataclass
-class Node:
-    """Tree node used by custom CART models."""
+from ._base import Node
 
-    feature_index: int | None = None
-    threshold: float | None = None
-    left: 'Node | None' = None
-    right: 'Node | None' = None
-    value: float | int | np.ndarray | None = None
-    impurity: float = 0.0
-    n_samples: int = 0
+__all__ = ["DecisionTreeClassifierCustom", "DecisionTreeRegressorCustom"]
 
 class DecisionTreeClassifierCustom(ClassifierMixin, BaseEstimator):
     """CART classifier with binary splits and Gini or entropy impurity."""

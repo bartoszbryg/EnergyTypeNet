@@ -1,10 +1,9 @@
-"""Custom classification and regression models for EnergyTypeNet."""
+"""Custom dimensionality-reduction models."""
 
-import inspect
-from dataclasses import dataclass
 import numpy as np
-from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, TransformerMixin, clone
-from sklearn.kernel_approximation import RBFSampler
+from sklearn.base import BaseEstimator, TransformerMixin
+
+__all__ = ["PCACustom", "LDACustom", "KernelPCACustom"]
 
 class PCACustom(TransformerMixin, BaseEstimator):
     """Principal Component Analysis implemented with NumPy."""

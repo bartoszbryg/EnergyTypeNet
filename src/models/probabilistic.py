@@ -1,10 +1,9 @@
-"""Custom classification and regression models for EnergyTypeNet."""
+"""Custom probabilistic classification and regression models."""
 
-import inspect
-from dataclasses import dataclass
 import numpy as np
-from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, TransformerMixin, clone
-from sklearn.kernel_approximation import RBFSampler
+from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
+
+__all__ = ["GaussianNaiveBayes", "MultinomialNaiveBayes", "BernoulliNaiveBayes", "BayesianLinearRegression"]
 
 class GaussianNaiveBayes(ClassifierMixin, BaseEstimator):
     """Gaussian Naive Bayes classifier implemented with NumPy."""

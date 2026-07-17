@@ -29,5 +29,10 @@ jobs:
       - name: Verify imports
         run: |
           python -c "from src.data import load_features, make_engineered_features"
-          python -c "from src.models import AttentionClassifier, LogisticRegressionOvR, LogisticRegressionSoftmax"
           python -c "from src.evaluation import cross_validate_custom, make_skf"
+          python -c "from src.models import AttentionClassifier, LogisticRegressionOvR, LogisticRegressionSoftmax"
+          python -c "from src.models import DecisionTreeClassifierCustom"
+          python -c "from src.models import KMeansCustom, DBSCANCustom, GaussianMixtureModelCustom, AgglomerativeCustom"
+          python -c "from src.models import BaggingClassifierCustom, BaggingRegressorCustom, AdaBoostClassifierCustom"
+          python -c "from src.models import ActivationFunctions, MLPCustom"
+          python scripts/verify_model_imports.py

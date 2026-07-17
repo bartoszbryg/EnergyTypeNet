@@ -1,10 +1,9 @@
-"""Custom classification and regression models for EnergyTypeNet."""
+"""Custom neural-network models and activation functions."""
 
-import inspect
-from dataclasses import dataclass
 import numpy as np
-from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, TransformerMixin, clone
-from sklearn.kernel_approximation import RBFSampler
+from sklearn.base import BaseEstimator
+
+__all__ = ["ActivationFunctions", "MLPCustom"]
 
 class ActivationFunctions:
     """Common neural-network activation functions and derivatives."""
