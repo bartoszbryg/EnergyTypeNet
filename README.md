@@ -432,7 +432,13 @@ The upload workflow is guarded for normal public use: it expects CSV input, remo
 
 ---
 
+### Model Package Layout
+
+The 30 custom model classes (31 public items including `Node`) now live in `src/models/`, with focused submodules for shared structures, linear models, regularized models, trees, SVM, probabilistic models, dimensionality reduction, clustering, neural networks, and ensembles. The public import API is unchanged, so notebooks and scripts can still use `from src.models import ClassName`. New code may import directly from the relevant family submodule. The only cross-submodule model dependency is `ensemble.py` importing the custom estimators from `trees.py`.
+
 ## Project Structure
+
+The custom model implementations are organized as a `src/models/` package by model family, while `from src.models import ...` remains supported for notebooks and scripts.
 
 ```text
 data/
@@ -469,7 +475,7 @@ src/
   data.py                            Energy dataset loading and feature engineering
   evaluation.py                      Evaluation and plotting helpers
   llm_assistant.py                   Ollama/OpenAI/Anthropic streaming helpers and usage tracking
-  models.py                          Custom NumPy classifiers, regressors, projections, clustering models and MLP
+  models/                            Custom model package with one submodule per algorithmic family
   predict.py                         CLI prediction helpers
   synthetic_experiment.py            Synthetic separability experiment
   train.py                           Production model training script
@@ -735,13 +741,5 @@ The AI Dataset Assistant extends the project beyond this one dataset by making t
 Planned future improvements:
 
 - `deploy-streamlit`: add a public Streamlit deployment link and screenshots after the app is stable.
-- `refactor-models-package`: split `src/models.py` into focused modules after the model suite stabilizes.
 - `model-card-export`: export the dataset report, model diagnostics and selected chat explanation as a clean Markdown or PDF model card.
 - `data-validation-suite`: add stronger schema checks, drift checks and feature-leakage warnings for uploaded CSV files.
-
-Completed extension branches:
-
-- `dataset-chat-agent`: added multi-turn dataset chat, contextual follow-up routing, suggested questions and JSON chat export.
-- `agent-computation-tools`: added safe predefined diagnostics for model ranking, feature importance, leakage warnings, missingness checks and full-vs-compact feature comparison.
-- `hosted-llm-provider`: added optional OpenAI and Anthropic streaming, provider selection, secure key templates, deterministic fallback and approximate usage tracking.
-- `agent-computation-tools`: added safe chat-triggered diagnostics for model gaps, feature strength, target correlations, feature-set comparisons and model-complexity summaries.

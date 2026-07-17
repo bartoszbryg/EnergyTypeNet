@@ -10,6 +10,8 @@ mlruns/
 results/*
 !results/.gitkeep
 models/
+!src/models/
+!src/models/*.py
 .dvc/cache/
 .dvc/tmp/
 data/torchvision/

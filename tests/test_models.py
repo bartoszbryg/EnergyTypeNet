@@ -533,3 +533,28 @@ def test_mlp_custom_early_stopping_records_validation_loss():
 
     assert len(model.val_loss_history_) > 0
     assert len(model.loss_history_) == model.n_epochs_
+
+
+
+def test_models_package_exports_public_model_api():
+    import src.models as models
+
+    expected = [
+        'AttentionClassifier', 'LogisticRegressionOvR', 'LogisticRegressionSoftmax',
+        'LinearRegressionGD', 'LinearRegressionNormal', 'Perceptron', 'AdalineGD',
+        'Node', 'DecisionTreeClassifierCustom', 'DecisionTreeRegressorCustom',
+        'SVMClassifierCustom',
+        'GaussianNaiveBayes', 'MultinomialNaiveBayes', 'BernoulliNaiveBayes',
+        'BayesianLinearRegression',
+        'RidgeRegressionCustom', 'LassoRegressionCustom', 'ElasticNetCustom',
+        'RegularizedLogisticRegression',
+        'KMeansCustom', 'DBSCANCustom', 'GaussianMixtureModelCustom',
+        'AgglomerativeCustom',
+        'BaggingClassifierCustom', 'BaggingRegressorCustom',
+        'AdaBoostClassifierCustom',
+        'PCACustom', 'LDACustom', 'KernelPCACustom',
+        'ActivationFunctions', 'MLPCustom',
+    ]
+    missing = [name for name in expected if not hasattr(models, name)]
+
+    assert missing == []
