@@ -1,10 +1,10 @@
 ﻿# EnergyTypeNet
 [![CI](https://github.com/bartoszbryg/EnergyTypeNet/actions/workflows/ci.yml/badge.svg)](https://github.com/bartoszbryg/EnergyTypeNet/actions/workflows/ci.yml)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue)](https://www.python.org/downloads/release/python-3110/)
-[![Live App](https://img.shields.io/badge/Live%20App-Streamlit-FF4B4B?logo=streamlit)](YOUR_STREAMLIT_APP_URL) <!-- Replace YOUR_STREAMLIT_APP_URL with the actual deployed URL after first deployment -->
+[![Live App](https://img.shields.io/badge/Live%20App-Streamlit-FF4B4B?logo=streamlit)](https://energytypenet-ml.streamlit.app/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> [Open Live Demo](YOUR_STREAMLIT_APP_URL) — Upload a supported tabular classification CSV for model comparison and visual diagnostics, use the broader AI Dataset Assistant for classification or regression analysis, or explore the bundled EnergyTypeNet demo with interactive decision boundaries, ROC curves and grounded dataset Q&A.
+> [Open Live Demo](https://energytypenet-ml.streamlit.app/) — Upload a supported tabular classification CSV for model comparison and visual diagnostics, use the broader AI Dataset Assistant for classification or regression analysis, or explore the bundled EnergyTypeNet demo with interactive decision boundaries, ROC curves and grounded dataset Q&A.
 
 I built EnergyTypeNet to predict whether a building is Residential, Commercial or Industrial from energy-consumption and building-attribute data. The core idea was to go beyond simply applying sklearn models and implement several algorithms from scratch so I could understand what is happening inside the learning process. I originally built three custom NumPy classifiers: an attention-weighted nearest-neighbor classifier using exponential kernel weighting, a One-vs-Rest logistic regression trained with gradient descent and L2 regularization, and a multiclass Softmax regression with a joint weight matrix and categorical cross-entropy loss. I later extended this into a broader advanced model suite with custom decision trees, SVM, Naive Bayes variants, Bayesian linear regression, regularized regression, dimensionality reduction, unsupervised clustering, custom Bagging and AdaBoost ensembles, a custom multi-layer perceptron trained with backpropagation and a PyTorch tabular deep-learning workflow. The project now covers Ridge, Lasso, ElasticNet, regularized logistic regression, PCA, LDA, Kernel PCA, t-SNE, optional UMAP, K-Means, DBSCAN, Gaussian Mixture Models, agglomerative hierarchical clustering, ensemble diversity diagnostics, Bagging, AdaBoost, Extra Trees, histogram gradient boosting, neural-network activation functions, initialization, optimizers, dropout, early stopping, MLP classification/regression, PyTorch `nn.Module` training loops, autoencoder-based reconstruction/anomaly detection, convolutional neural-network foundations on image data and recurrent neural-network foundations for sequential data.
 
@@ -18,21 +18,21 @@ The research part answers a specific question I had: is the accuracy ceiling cau
 
 | Overview | Model Comparison |
 | --- | --- |
-| ![EnergyTypeNet overview with metrics and accuracy chart](screenshots/01_overview.png) | ![Cross-validation model comparison table and chart](screenshots/02_model_comparison.png) |
+| ![EnergyTypeNet overview with metrics and accuracy chart](screenshots/01_overview.png) | ![Five-fold cross-validation model comparison table](screenshots/02_model_comparison.png) |
 
 | Decision Boundaries | ROC Curves |
 | --- | --- |
-| ![Decision boundaries for the EnergyTypeNet classifiers](screenshots/03_decision_boundaries.png) | ![Multiclass ROC curves with AUC values](screenshots/04_roc_curves.png) |
+| ![PCA decision boundaries for the EnergyTypeNet classifiers](screenshots/03_decision_boundaries.png) | ![Multiclass ROC curves with AUC values](screenshots/04_roc_curves.png) |
 
 | Custom Dataset Analysis | Chat Assistant |
 | --- | --- |
-| ![AutoML analysis for an uploaded custom dataset](screenshots/05_custom_dataset_analysis.png) | ![Multi-turn AI dataset assistant conversation](screenshots/06_chat_assistant.png) |
+| ![Custom CSV configuration and multiclass ROC analysis](screenshots/05_custom_dataset_analysis.png) | ![Grounded multi-turn AI dataset assistant conversation](screenshots/06_chat_assistant.png) |
 
 | Live Prediction |
 | --- |
 | ![Interactive live building-type predictions and probabilities](screenshots/07_live_prediction.png) |
 
-*These screenshots show the deployed Streamlit app and will appear once the PNG files are added to `screenshots/` by following [`screenshots/README.md`](screenshots/README.md).*
+*These screenshots show the deployed Streamlit app. See [`screenshots/README.md`](screenshots/README.md) for the recapture checklist.*
 
 ---
 
@@ -673,8 +673,7 @@ Warnings from FastAPI/Starlette internals or sklearn MLP convergence on tiny tes
 
 ### Streamlit Cloud
 
-<!-- Replace YOUR_STREAMLIT_APP_URL with the actual deployed URL after first deployment -->
-Live app: [YOUR_STREAMLIT_APP_URL](YOUR_STREAMLIT_APP_URL)
+Live app: [https://energytypenet-ml.streamlit.app/](https://energytypenet-ml.streamlit.app/)
 
 To deploy a personal fork:
 
