@@ -28,9 +28,12 @@ class ChatMessage:
         if self.role not in {'user', 'assistant'}:
             raise ValueError("role must be either 'user' or 'assistant'")
 
-        if self.source not in {'user', 'deterministic', 'ollama', 'hosted', 'fallback'}:
+        if self.source not in {
+            'user', 'deterministic', 'tool', 'ollama', 'hosted', 'fallback'
+        }:
             raise ValueError(
-                "source must be one of 'user', 'deterministic', 'ollama', 'hosted', or 'fallback'"
+                "source must be one of 'user', 'deterministic', 'tool', 'ollama', "
+                "'hosted', or 'fallback'"
             )
 
         if not self.timestamp:
@@ -109,8 +112,37 @@ def classify_question(
     q = question.lower().strip()
     words = set(q.replace('?', ' ').replace(',', ' ').split())
 
+    target_selection_signals = (
+        'best target',
+        'target column',
+        'which target',
+        'recommended target',
+        'choose as the target',
+        'choose as target',
+        'predict column',
+    )
+    if any(signal in q for signal in target_selection_signals):
+        return 'target_selection'
+
     if should_run_computation(q):
         return 'computation'
+
+    # Subject-specific intents must win over generic words such as "best".
+    # This also handles corrective turns like "But I asked about the features".
+    if any(
+        signal in q
+        for signal in [
+            'feature',
+            'important',
+            'relevant',
+            'mutual information',
+            'mutual',
+            'which column',
+            'variable',
+            'predictor',
+        ]
+    ):
+        return 'feature_importance'
 
     follow_up_starts = (
         'why',
@@ -181,21 +213,6 @@ def classify_question(
     if any(
         signal in q
         for signal in [
-            'feature',
-            'important',
-            'relevant',
-            'mutual information',
-            'mutual',
-            'which column',
-            'variable',
-            'predictor',
-        ]
-    ):
-        return 'feature_importance'
-
-    if any(
-        signal in q
-        for signal in [
             'how many',
             'rows',
             'columns',
@@ -242,6 +259,10 @@ def build_contextualized_prompt(
         'model_performance': (
             'Cite specific accuracy, F1, R2, MAE, or other available metric '
             'values from the context when making model-performance claims.'
+        ),
+        'target_selection': (
+            'Explain the currently selected target and make clear that the best '
+            'target depends on the prediction goal. Do not invent a different target.'
         ),
     }
     instruction = type_instructions.get(
@@ -479,6 +500,13 @@ def suggest_next_questions(
             f'Why is {top_feature} important?',
             'Should I drop the least important features?',
             'How does feature selection affect accuracy?',
+        ]
+
+    if question_type == 'target_selection':
+        return [
+            f'Why is {target} suitable for this task?',
+            'Is this a classification or regression problem?',
+            'Which features should I use with this target?',
         ]
 
     if question_type == 'follow_up':

@@ -9,6 +9,7 @@ Run from repo root:
 """
 
 import io
+import hashlib
 import json
 import time
 import numpy as np
@@ -62,7 +63,15 @@ from src.chat_agent import (
     utc_timestamp,
 )
 from src.data import CLASSES as ENERGY_CLASSES, load_features, load_raw
-from src.models import AttentionClassifier, LogisticRegressionSoftmax
+from src.dashboard_validation import (
+    recommend_classification_targets,
+    validate_classification_target,
+)
+from src.preloaded_artifacts import (
+    PreloadedArtifactError,
+    load_artifact as load_preloaded_artifact,
+    train_energy_models,
+)
 
 st.set_page_config(
     page_title='EnergyTypeNet',
@@ -104,21 +113,26 @@ def build_sklearn_models(n_classes: int, random_state: int = 42) -> dict:
             activation='relu',
             alpha=0.01,
             max_iter=1200,
-            early_stopping=True,
+            # Cross-validation already estimates generalization. Disabling the
+            # estimator's extra validation split keeps small uploads reliable.
+            early_stopping=False,
             random_state=random_state,
         ),
     )
 
-    xgb = XGBClassifier(
+    xgb_options = dict(
         max_depth=3,
         learning_rate=0.05,
         n_estimators=100,
-        objective='multi:softprob',
-        num_class=n_classes,
         eval_metric='mlogloss',
         verbosity=0,
         random_state=random_state,
     )
+    if n_classes == 2:
+        xgb_options['objective'] = 'binary:logistic'
+    else:
+        xgb_options.update(objective='multi:softprob', num_class=n_classes)
+    xgb = XGBClassifier(**xgb_options)
 
     return {'LR (sklearn)': lr, 'MLP': mlp, 'XGBoost': xgb}
 
@@ -296,6 +310,24 @@ def fig_decision_boundary_2d(model, X2, y, classes, sc2, title, h=0.08):
 
 
 def fig_learning(model, X, y, title):
+    _, class_counts = np.unique(y, return_counts=True)
+    if len(X) < 50 or int(class_counts.min()) < 10:
+        fig, ax = plt.subplots(figsize=(4, 3))
+        ax.axis('off')
+        ax.text(
+            0.5,
+            0.5,
+            'Learning curve not shown for this small dataset.\n'
+            'Use at least 50 rows and 10 examples per class\n'
+            'for stable incremental training subsets.',
+            ha='center',
+            va='center',
+            transform=ax.transAxes,
+            fontsize=9,
+        )
+        ax.set_title(title, fontsize=9)
+        return fig
+
     try:
         tr_sizes, tr_sc, val_sc = learning_curve(
             model,
@@ -348,6 +380,41 @@ def fig_learning(model, X, y, title):
     return fig
 
 
+def fig_precomputed_learning(curve: dict, title: str) -> plt.Figure:
+    """Render a learning curve without refitting a model."""
+    train_sizes = curve['train_sizes']
+    train_mean = curve['train_mean']
+    train_std = curve['train_std']
+    validation_mean = curve['validation_mean']
+    validation_std = curve['validation_std']
+
+    fig, ax = plt.subplots(figsize=(5, 3.5))
+    ax.plot(train_sizes, train_mean, 'o-', color='steelblue', label='Train')
+    ax.fill_between(
+        train_sizes,
+        train_mean - train_std,
+        train_mean + train_std,
+        alpha=0.15,
+        color='steelblue',
+    )
+    ax.plot(train_sizes, validation_mean, 's-', color='darkorange', label='CV val')
+    ax.fill_between(
+        train_sizes,
+        validation_mean - validation_std,
+        validation_mean + validation_std,
+        alpha=0.15,
+        color='darkorange',
+    )
+    ax.axhline(1 / 3, color='red', ls='--', alpha=0.4, label='Baseline')
+    ax.set_title(title, fontsize=9)
+    ax.set_xlabel('Training examples')
+    ax.set_ylabel('Accuracy')
+    ax.legend(fontsize=7)
+    ax.set_ylim(0.1, 1.05)
+    plt.tight_layout()
+    return fig
+
+
 # EnergyTypeNet mode
 
 @st.cache_data
@@ -363,63 +430,31 @@ def _load_energy():
 
 
 @st.cache_resource
-def _train_energy_models(_sc):
-    _, _, X_tr, y_tr, _, _, _ = _load_energy()
-    X_sc = _sc.transform(X_tr)
-
-    lr = make_pipeline(
-        StandardScaler(),
-        LogisticRegression(C=10, max_iter=1000, random_state=42),
-    )
-
-    mlp = make_pipeline(
-        StandardScaler(),
-        MLPClassifier(
-            hidden_layer_sizes=(20, 20),
-            activation='relu',
-            alpha=0.01,
-            max_iter=1200,
-            early_stopping=True,
-            random_state=42,
-        ),
-    )
-
-    xgb = XGBClassifier(
-        max_depth=3,
-        learning_rate=0.05,
-        n_estimators=100,
-        objective='multi:softprob',
-        num_class=3,
-        eval_metric='mlogloss',
-        verbosity=0,
-        random_state=42,
-    )
-
-    attn = AttentionClassifier(w=2.0).fit(X_sc, y_tr)
-    softmax = LogisticRegressionSoftmax(
-        eta=0.01,
-        n_iter=1000,
-        alpha=0.01,
-        random_state=42,
-    ).fit(X_sc, y_tr)
-
-    for m in [lr, mlp, xgb]:
-        m.fit(X_tr, y_tr)
-
-    return {
-        'LR (sklearn)': (lr, X_tr, False),
-        'MLP': (mlp, X_tr, False),
-        'XGBoost': (xgb, X_tr, False),
-        'AttentionNet': (attn, X_sc, True),
-        'LR Softmax': (softmax, X_sc, True),
-    }
+def _load_energy_resources(_sc):
+    """Load versioned demo assets, with live training as a safe fallback."""
+    try:
+        return load_preloaded_artifact(), None
+    except PreloadedArtifactError as exc:
+        fallback = {
+            'models': train_energy_models(_sc),
+            'comparison': None,
+            'learning_curves': {},
+        }
+        return fallback, str(exc)
 
 
 def render_energy_dashboard(page: str):
     train_df, test_df, X_tr, y_tr, X_te, y_te, sc = _load_energy()
 
-    with st.spinner('Training models - cached after first run...'):
-        models = _train_energy_models(sc)
+    with st.spinner('Loading precomputed demo models...'):
+        resources, artifact_warning = _load_energy_resources(sc)
+    models = resources['models']
+
+    if artifact_warning:
+        st.warning(
+            'Precomputed demo assets were unavailable or incompatible, so the '
+            f'models were trained safely at runtime. Details: {artifact_warning}'
+        )
 
     X_te_sc = sc.transform(X_te)
     X_tr_sc = sc.transform(X_tr)
@@ -487,20 +522,22 @@ def render_energy_dashboard(page: str):
 
     elif page == 'Model Comparison':
         st.title('Model Comparison - 5-fold CV')
-        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-        rows = []
-
-        for name, (m, _, is_sc) in models.items():
-            X_cv = X_tr_sc if is_sc else X_tr
-            scores = cross_val_score(m, X_cv, y_tr, cv=skf, scoring='accuracy')
-
-            rows.append({
-                'Model': name,
-                'CV Mean': scores.mean(),
-                'CV Std': scores.std(),
-                'Test Acc': accuracy_score(y_te, m.predict(X_te_sc if is_sc else X_te)),
-            })
-
+        rows = resources.get('comparison')
+        if rows is None:
+            skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+            rows = []
+            for name, (m, _, is_sc) in models.items():
+                X_cv = X_tr_sc if is_sc else X_tr
+                scores = cross_val_score(m, X_cv, y_tr, cv=skf, scoring='accuracy')
+                rows.append({
+                    'Model': name,
+                    'CV Mean': scores.mean(),
+                    'CV Std': scores.std(),
+                    'Test Acc': accuracy_score(
+                        y_te,
+                        m.predict(X_te_sc if is_sc else X_te),
+                    ),
+                })
         cmp_df = pd.DataFrame(rows).sort_values('CV Mean', ascending=False)
         st.dataframe(
             cmp_df.style.format({
@@ -583,12 +620,18 @@ def render_energy_dashboard(page: str):
         st.title('Learning Curves')
         cols = st.columns(3)
         idx = 0
+        precomputed_curves = resources.get('learning_curves', {})
 
         for name, (m, _, _s) in models.items():
             if not hasattr(m, 'named_steps'):
                 continue
 
-            fig = fig_learning(m, X_tr, y_tr, name)
+            curve = precomputed_curves.get(name)
+            fig = (
+                fig_precomputed_learning(curve, name)
+                if curve is not None
+                else fig_learning(m, X_tr, y_tr, name)
+            )
             cols[idx % 3].pyplot(fig)
             plt.close(fig)
             idx += 1
@@ -635,7 +678,8 @@ def encode_labels(y_raw: np.ndarray):
 def render_custom_dashboard():
     st.title('Custom Dataset - Universal Classifier')
     st.markdown(
-        'Upload **any CSV**, pick your target column and features, '
+        'Upload a supported **tabular classification CSV**, pick a categorical '
+        'target column and features, '
         'and the full pipeline (5-fold CV, confusion matrices, ROC, PR curves, '
         'decision boundaries via PCA) runs automatically.'
     )
@@ -655,12 +699,15 @@ def render_custom_dashboard():
         return
 
     df_raw = pd.read_csv(uploaded).dropna()
+    dataset_widget_key = hashlib.sha256(uploaded.getvalue()).hexdigest()[:12]
     st.success(f'Loaded {len(df_raw):,} rows x {df_raw.shape[1]} columns')
 
     with st.expander('Preview data', expanded=False):
         st.dataframe(df_raw.head(20), width='stretch')
 
     all_cols = list(df_raw.columns)
+    target_recommendations = recommend_classification_targets(df_raw)
+    default_target = target_recommendations[0] if target_recommendations else all_cols[-1]
 
     st.subheader('Column configuration')
     col1, col2 = st.columns(2)
@@ -669,7 +716,8 @@ def render_custom_dashboard():
         target_col = st.selectbox(
             'Target column (what to predict)',
             all_cols,
-            index=len(all_cols) - 1,
+            index=all_cols.index(default_target),
+            key=f'custom_target_{dataset_widget_key}',
         )
 
     remaining = [c for c in all_cols if c != target_col]
@@ -683,22 +731,30 @@ def render_custom_dashboard():
             'Feature columns',
             options=remaining,
             default=numeric_cols[:10],
+            key=f'custom_features_{dataset_widget_key}_{target_col}',
         )
 
     if not feature_cols:
         st.warning('Select at least one feature column.')
         return
 
+    target_validation = validate_classification_target(df_raw[target_col])
+    if not target_validation.valid:
+        st.error(target_validation.reason)
+        if target_recommendations:
+            alternatives = [name for name in target_recommendations if name != target_col]
+            if alternatives:
+                st.info(
+                    'Recommended classification target'
+                    + ('s' if len(alternatives) > 1 else '')
+                    + ': '
+                    + ', '.join(f'`{name}`' for name in alternatives[:5])
+                )
+        return
+
     y_raw = df_raw[target_col].values
     y, classes = encode_labels(y_raw)
     n_classes = len(classes)
-
-    if n_classes < 2:
-        st.error('Target column must have at least 2 unique values.')
-        return
-
-    if n_classes > 10:
-        st.warning(f'Target has {n_classes} classes - models may be slow or inaccurate.')
 
     # Numeric columns stay as-is; categorical columns become one-hot features.
     feat_parts = []
@@ -994,6 +1050,10 @@ def render_dataset_assistant():
         st.session_state.last_compact_results = None
     if 'last_feature_ranking' not in st.session_state:
         st.session_state.last_feature_ranking = None
+    if 'last_training_signature' not in st.session_state:
+        st.session_state.last_training_signature = None
+    if 'last_dataset_report' not in st.session_state:
+        st.session_state.last_dataset_report = None
     if 'last_tool_tables' not in st.session_state:
         st.session_state.last_tool_tables = {}
     if 'pending_question' not in st.session_state:
@@ -1026,6 +1086,8 @@ def render_dataset_assistant():
         st.session_state.last_results = None
         st.session_state.last_compact_results = None
         st.session_state.last_feature_ranking = None
+        st.session_state.last_training_signature = None
+        st.session_state.last_dataset_report = None
         st.session_state.last_tool_tables = {}
         st.session_state.last_dataset_signature = dataset_signature
 
@@ -1130,6 +1192,22 @@ def render_dataset_assistant():
     )
     st.session_state.last_prepared = prepared
 
+    training_signature = (
+        dataset_signature,
+        target_col,
+        task_type,
+        tuple(feature_cols),
+    )
+    if st.session_state.last_training_signature != training_signature:
+        if st.session_state.last_training_signature is not None:
+            st.session_state.chat_history.clear()
+            st.session_state.last_tool_tables = {}
+            st.session_state.pending_question = None
+            st.session_state.pending_response = None
+        st.session_state.last_results = None
+        st.session_state.last_compact_results = None
+        st.session_state.last_dataset_report = None
+
     if prepared.classes:
         st.caption('Classes: ' + ', '.join(f'`{cls}`' for cls in prepared.classes))
 
@@ -1203,6 +1281,7 @@ def render_dataset_assistant():
                 results, _ = train_baselines(prepared)
                 st.session_state.last_results = results
                 st.session_state.last_compact_results = None
+                st.session_state.last_training_signature = training_signature
 
                 if compare_compact:
                     compact_prepared = prepare_dataset(
@@ -1362,6 +1441,7 @@ def render_dataset_assistant():
             feature_ranking,
             compact_results,
         )
+        st.session_state.last_dataset_report = report
         st.markdown(report)
         st.download_button(
             'Download dataset report',
@@ -1369,6 +1449,35 @@ def render_dataset_assistant():
             file_name='dataset_report.md',
             mime='text/markdown',
         )
+
+    assistant_ready = (
+        st.session_state.last_training_signature == training_signature
+        and st.session_state.last_results is not None
+        and st.session_state.last_dataset_report is not None
+    )
+
+    if not assistant_ready:
+        st.subheader('6. Dataset Assistant')
+        st.info(
+            'Train the baseline models and wait for the dataset report to finish. '
+            'The chat will appear when those results are ready.'
+        )
+        return
+
+    if task_type == 'classification':
+        target_validation = validate_classification_target(df[target_col])
+        if not target_validation.valid:
+            st.warning(target_validation.reason)
+            alternatives = recommend_classification_targets(df)
+            alternatives = [name for name in alternatives if name != target_col]
+            if alternatives:
+                st.info(
+                    'Recommended classification target'
+                    + ('s' if len(alternatives) > 1 else '')
+                    + ': '
+                    + ', '.join(f'`{name}`' for name in alternatives[:5])
+                )
+            return
 
     st.subheader('6. Dataset Assistant')
 
@@ -1380,7 +1489,12 @@ def render_dataset_assistant():
             'for richer explanations.'
         )
     elif provider == 'ollama':
-        st.info('Using Ollama locally. Answers are grounded in dataset statistics.')
+        st.info(
+            'Using Ollama locally. It requires this dashboard to run on the same '
+            'computer as Ollama; Streamlit Cloud cannot connect to your localhost. '
+            'Answers fall back safely to deterministic dataset statistics if Ollama '
+            'is unavailable.'
+        )
     elif provider == 'openai':
         st.info(
             f"Using OpenAI ({st.session_state.llm_model}). "
@@ -1497,50 +1611,37 @@ def render_dataset_assistant():
         ranking_saved = st.session_state.last_feature_ranking
 
         with st.chat_message('assistant'):
-            with st.spinner('Thinking through the dataset...'):
-                thinking_placeholder = st.empty()
-                thinking_placeholder.markdown('_Thinking through the dataset..._')
-
-                previous_assistant = st.session_state.chat_history.last_assistant_message()
-                tool_result = run_dataset_computation(
-                    question,
-                    profile_saved,
-                    prepared_saved,
-                    results_saved,
-                    ranking_saved,
-                    compact_results_saved,
-                    previous_answer=previous_assistant.content if previous_assistant else None,
-                )
-
-                if tool_result is not None:
-                    deterministic = tool_result.answer
-                    source = tool_result.source
-                    st.session_state.last_tool_tables = tool_result.tables
-                else:
-                    deterministic = handle_follow_up(
-                        question,
-                        st.session_state.chat_history,
-                        profile_saved,
-                        prepared_saved,
-                        results_saved,
-                        ranking_saved,
-                    )
-                    source = 'deterministic'
-
-            answer = deterministic
-            provider = st.session_state.get('llm_provider', 'none')
             response_placeholder = st.empty()
             response_placeholder.markdown('_Thinking through the dataset..._')
 
-            deterministic = handle_follow_up(
+            previous_assistant = st.session_state.chat_history.last_assistant_message()
+            tool_result = run_dataset_computation(
                 question,
-                st.session_state.chat_history,
                 profile_saved,
                 prepared_saved,
                 results_saved,
                 ranking_saved,
+                compact_results_saved,
+                previous_answer=previous_assistant.content if previous_assistant else None,
             )
+
+            if tool_result is not None:
+                deterministic = tool_result.answer
+                source = tool_result.source
+                st.session_state.last_tool_tables = tool_result.tables
+            else:
+                deterministic = handle_follow_up(
+                    question,
+                    st.session_state.chat_history,
+                    profile_saved,
+                    prepared_saved,
+                    results_saved,
+                    ranking_saved,
+                )
+                source = 'deterministic'
+
             answer = deterministic
+            provider = st.session_state.get('llm_provider', 'none')
 
             if provider != 'none':
                 prompt = build_contextualized_prompt(
@@ -1553,11 +1654,8 @@ def render_dataset_assistant():
                     q_type,
                     tool_result=tool_result.answer if tool_result else None,
                 )
-                thinking_placeholder.markdown('_Thinking through the dataset..._')
                 time.sleep(0.25)
-                response_placeholder = st.empty()
                 full_response = ''
-                first_token = True
 
                 try:
                     gen, actual_source = stream_with_fallback(
@@ -1569,14 +1667,9 @@ def render_dataset_assistant():
                     )
 
                     for token in gen:
-                        if first_token:
-                            thinking_placeholder.empty()
-                            first_token = False
-
                         full_response += token
                         response_placeholder.markdown(full_response + '...')
 
-                    thinking_placeholder.empty()
                     response_placeholder.markdown(full_response)
                     answer = full_response
                     source = actual_source
@@ -1589,7 +1682,6 @@ def render_dataset_assistant():
                             full_response,
                         )
                 except Exception as exc:
-                    thinking_placeholder.empty()
                     source = 'deterministic'
                     st.caption(
                         f'LLM streaming failed ({exc}), so the deterministic '
@@ -1597,7 +1689,6 @@ def render_dataset_assistant():
                     )
                     response_placeholder.markdown(answer)
             else:
-                thinking_placeholder.empty()
                 response_placeholder.markdown(answer)
 
             st.caption(
@@ -1688,7 +1779,8 @@ if mode == 'AI Dataset Assistant':
 
     if provider == 'ollama':
         st.sidebar.caption(
-            'Ollama must be running on localhost:11434. '
+            'Local use only: Ollama must run on localhost:11434 on the same computer '
+            'as this dashboard. Streamlit Cloud cannot access your local Ollama. '
             'Start it with `ollama run llama3.1`.'
         )
 

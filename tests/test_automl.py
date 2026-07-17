@@ -217,6 +217,35 @@ def test_answer_overfitting_question_uses_cv_test_gap():
     assert 'overfitting' in answer.lower()
 
 
+def test_answer_best_features_does_not_return_best_model():
+    df = pd.DataFrame({
+        'strong_feature': [0, 0, 1, 1, 2, 2],
+        'weak_feature': [1, 2, 1, 2, 1, 2],
+        'target': ['a', 'a', 'b', 'b', 'c', 'c'],
+    })
+    profile = profile_dataset(df)
+    prepared = prepare_dataset(
+        df,
+        'target',
+        ['strong_feature', 'weak_feature'],
+        'classification',
+    )
+    ranking = rank_features(prepared)
+    results = pd.DataFrame([{
+        'model': 'Logistic Regression',
+        'test_accuracy': 1.0,
+        'test_f1_macro': 1.0,
+    }])
+
+    answer = answer_dataset_question(
+        'What are the best features?', profile, prepared, results, ranking
+    )
+
+    assert 'strongest measured feature candidates' in answer
+    assert 'MI ' in answer
+    assert 'best baseline' not in answer
+
+
 def test_cluster_analysis_returns_labels_and_diagnostics():
     df = pd.DataFrame({
         'x': [-3, -2.8, -3.1, 0.0, 0.2, -0.1, 3.0, 3.2, 2.8],

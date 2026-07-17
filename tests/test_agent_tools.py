@@ -125,9 +125,48 @@ def test_run_dataset_computation_returns_tables_and_grounded_answer():
 
     assert output is not None
     assert output.tool_name == 'dataset_diagnostics'
-    assert 'Model check' in output.answer
-    assert 'Feature check' in output.answer
-    assert 'red flag' in output.answer
+    assert 'ranks first because' in output.answer
+    assert 'runner-up' in output.answer
+    assert 'Feature check' not in output.answer
     assert 'model_diagnostics' in output.tables
     assert 'feature_diagnostics' in output.tables
     assert 'feature_set_comparison' in output.tables
+
+
+def test_run_dataset_computation_returns_relevant_overfitting_sections_only():
+    profile, prepared, ranking, results = _sample_classification_context()
+    compact = results.copy()
+    compact['test_accuracy'] = 0.52
+
+    output = run_dataset_computation(
+        'Does the model appear to overfit?',
+        profile,
+        prepared,
+        results,
+        ranking,
+        compact,
+    )
+
+    assert output is not None
+    assert 'CV/test gap' in output.answer
+    assert 'full-versus-compact' in output.answer
+    assert 'not proof' in output.answer
+    assert 'Data quality check' not in output.answer
+    assert 'Feature check' not in output.answer
+
+
+def test_run_dataset_computation_explains_why_best_model_without_repeating_summary():
+    profile, prepared, ranking, results = _sample_classification_context()
+
+    output = run_dataset_computation(
+        'Why is this the best model?',
+        profile,
+        prepared,
+        results,
+        ranking,
+    )
+
+    assert output is not None
+    assert 'ranks first because' in output.answer
+    assert 'runner-up' in output.answer
+    assert 'Model check:' not in output.answer
