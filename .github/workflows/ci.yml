@@ -30,9 +30,72 @@ jobs:
         run: |
           python -c "from src.data import load_features, make_engineered_features"
           python -c "from src.evaluation import cross_validate_custom, make_skf"
-          python -c "from src.models import AttentionClassifier, LogisticRegressionOvR, LogisticRegressionSoftmax"
-          python -c "from src.models import DecisionTreeClassifierCustom"
-          python -c "from src.models import KMeansCustom, DBSCANCustom, GaussianMixtureModelCustom, AgglomerativeCustom"
-          python -c "from src.models import BaggingClassifierCustom, BaggingRegressorCustom, AdaBoostClassifierCustom"
-          python -c "from src.models import ActivationFunctions, MLPCustom"
+          python -c "from src.models import Node, LinearRegressionGD, AttentionClassifier, RidgeRegressionCustom, DecisionTreeClassifierCustom, SVMClassifierCustom, GaussianNaiveBayes, KMeansCustom, PCACustom, MLPCustom, BaggingClassifierCustom, AdaBoostClassifierCustom"
+          python -c "from src.models.trees import DecisionTreeClassifierCustom"
+          python -c "from src.models.ensemble import BaggingClassifierCustom, AdaBoostClassifierCustom"
+          python -c "from src.models.clustering import KMeansCustom"
+          python -c "from src.models.neural import MLPCustom"
           python scripts/verify_model_imports.py
+          python -c "from src.automl import profile_dataset, train_baselines"
+          python -c "from src.llm_assistant import stream_ollama, UsageTracker"
+          python -c "from src.chat_agent import ChatHistory, classify_question"
+
+  deploy-check:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify dashboard entry point
+        run: |
+          python -c "import dashboard; print('dashboard import OK')"
+          python -c "import streamlit; print('streamlit', streamlit.__version__)"
+
+      - name: Verify source and imports
+        run: |
+          python -m compileall src dashboard.py
+          python -c "from src.data import load_features, make_engineered_features"
+          python -c "from src.evaluation import cross_validate_custom, make_skf"
+          python -c "from src.models import Node, LinearRegressionGD, AttentionClassifier, RidgeRegressionCustom, DecisionTreeClassifierCustom, SVMClassifierCustom, GaussianNaiveBayes, KMeansCustom, PCACustom, MLPCustom, BaggingClassifierCustom, AdaBoostClassifierCustom"
+          python -c "from src.models.trees import DecisionTreeClassifierCustom"
+          python -c "from src.models.ensemble import BaggingClassifierCustom, AdaBoostClassifierCustom"
+          python -c "from src.models.clustering import KMeansCustom"
+          python -c "from src.models.neural import MLPCustom"
+          python scripts/verify_model_imports.py
+          python -c "from src.automl import profile_dataset, train_baselines"
+          python -c "from src.llm_assistant import stream_ollama, UsageTracker"
+          python -c "from src.chat_agent import ChatHistory, classify_question"
+
+      - name: Scan for committed API keys
+        shell: bash
+        run: |
+          matches="$(grep -RInE \
+            --include='*.py' \
+            --include='*.toml' \
+            --include='*.txt' \
+            --include='*.yml' \
+            --exclude='.gitignore' \
+            --exclude='.env.example' \
+            --exclude='secrets.toml.example' \
+            'sk-ant-[[:alnum:]]{20,}|sk-[[:alnum:]]{20,}' . || true)"
+          if [ -n "$matches" ]; then
+            echo "::error::Possible committed API key detected"
+            echo "$matches"
+            exit 1
+          fi
+          echo "No possible committed API keys detected."
+
+      - name: Verify Streamlit config
+        run: |
+          python -c "from pathlib import Path; import tomllib; path = Path('.streamlit/config.toml'); data = tomllib.loads(path.read_text(encoding='utf-8')); print('Streamlit config sections:', ', '.join(data))"
