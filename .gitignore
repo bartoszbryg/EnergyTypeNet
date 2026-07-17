@@ -9,7 +9,8 @@ __pycache__/
 dist/
 build/
 .ipynb_checkpoints/
-artifacts/
+artifacts/*
+!artifacts/streamlit_preloaded.joblib
 mlflow.db
 mlruns/
 results/*

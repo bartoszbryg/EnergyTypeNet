@@ -62,7 +62,11 @@ from src.chat_agent import (
     utc_timestamp,
 )
 from src.data import CLASSES as ENERGY_CLASSES, load_features, load_raw
-from src.models import AttentionClassifier, LogisticRegressionSoftmax
+from src.preloaded_artifacts import (
+    PreloadedArtifactError,
+    load_artifact as load_preloaded_artifact,
+    train_energy_models,
+)
 
 st.set_page_config(
     page_title='EnergyTypeNet',
@@ -348,6 +352,41 @@ def fig_learning(model, X, y, title):
     return fig
 
 
+def fig_precomputed_learning(curve: dict, title: str) -> plt.Figure:
+    """Render a learning curve without refitting a model."""
+    train_sizes = curve['train_sizes']
+    train_mean = curve['train_mean']
+    train_std = curve['train_std']
+    validation_mean = curve['validation_mean']
+    validation_std = curve['validation_std']
+
+    fig, ax = plt.subplots(figsize=(5, 3.5))
+    ax.plot(train_sizes, train_mean, 'o-', color='steelblue', label='Train')
+    ax.fill_between(
+        train_sizes,
+        train_mean - train_std,
+        train_mean + train_std,
+        alpha=0.15,
+        color='steelblue',
+    )
+    ax.plot(train_sizes, validation_mean, 's-', color='darkorange', label='CV val')
+    ax.fill_between(
+        train_sizes,
+        validation_mean - validation_std,
+        validation_mean + validation_std,
+        alpha=0.15,
+        color='darkorange',
+    )
+    ax.axhline(1 / 3, color='red', ls='--', alpha=0.4, label='Baseline')
+    ax.set_title(title, fontsize=9)
+    ax.set_xlabel('Training examples')
+    ax.set_ylabel('Accuracy')
+    ax.legend(fontsize=7)
+    ax.set_ylim(0.1, 1.05)
+    plt.tight_layout()
+    return fig
+
+
 # EnergyTypeNet mode
 
 @st.cache_data
@@ -363,63 +402,31 @@ def _load_energy():
 
 
 @st.cache_resource
-def _train_energy_models(_sc):
-    _, _, X_tr, y_tr, _, _, _ = _load_energy()
-    X_sc = _sc.transform(X_tr)
-
-    lr = make_pipeline(
-        StandardScaler(),
-        LogisticRegression(C=10, max_iter=1000, random_state=42),
-    )
-
-    mlp = make_pipeline(
-        StandardScaler(),
-        MLPClassifier(
-            hidden_layer_sizes=(20, 20),
-            activation='relu',
-            alpha=0.01,
-            max_iter=1200,
-            early_stopping=True,
-            random_state=42,
-        ),
-    )
-
-    xgb = XGBClassifier(
-        max_depth=3,
-        learning_rate=0.05,
-        n_estimators=100,
-        objective='multi:softprob',
-        num_class=3,
-        eval_metric='mlogloss',
-        verbosity=0,
-        random_state=42,
-    )
-
-    attn = AttentionClassifier(w=2.0).fit(X_sc, y_tr)
-    softmax = LogisticRegressionSoftmax(
-        eta=0.01,
-        n_iter=1000,
-        alpha=0.01,
-        random_state=42,
-    ).fit(X_sc, y_tr)
-
-    for m in [lr, mlp, xgb]:
-        m.fit(X_tr, y_tr)
-
-    return {
-        'LR (sklearn)': (lr, X_tr, False),
-        'MLP': (mlp, X_tr, False),
-        'XGBoost': (xgb, X_tr, False),
-        'AttentionNet': (attn, X_sc, True),
-        'LR Softmax': (softmax, X_sc, True),
-    }
+def _load_energy_resources(_sc):
+    """Load versioned demo assets, with live training as a safe fallback."""
+    try:
+        return load_preloaded_artifact(), None
+    except PreloadedArtifactError as exc:
+        fallback = {
+            'models': train_energy_models(_sc),
+            'comparison': None,
+            'learning_curves': {},
+        }
+        return fallback, str(exc)
 
 
 def render_energy_dashboard(page: str):
     train_df, test_df, X_tr, y_tr, X_te, y_te, sc = _load_energy()
 
-    with st.spinner('Training models - cached after first run...'):
-        models = _train_energy_models(sc)
+    with st.spinner('Loading precomputed demo models...'):
+        resources, artifact_warning = _load_energy_resources(sc)
+    models = resources['models']
+
+    if artifact_warning:
+        st.warning(
+            'Precomputed demo assets were unavailable or incompatible, so the '
+            f'models were trained safely at runtime. Details: {artifact_warning}'
+        )
 
     X_te_sc = sc.transform(X_te)
     X_tr_sc = sc.transform(X_tr)
@@ -487,20 +494,22 @@ def render_energy_dashboard(page: str):
 
     elif page == 'Model Comparison':
         st.title('Model Comparison - 5-fold CV')
-        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-        rows = []
-
-        for name, (m, _, is_sc) in models.items():
-            X_cv = X_tr_sc if is_sc else X_tr
-            scores = cross_val_score(m, X_cv, y_tr, cv=skf, scoring='accuracy')
-
-            rows.append({
-                'Model': name,
-                'CV Mean': scores.mean(),
-                'CV Std': scores.std(),
-                'Test Acc': accuracy_score(y_te, m.predict(X_te_sc if is_sc else X_te)),
-            })
-
+        rows = resources.get('comparison')
+        if rows is None:
+            skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+            rows = []
+            for name, (m, _, is_sc) in models.items():
+                X_cv = X_tr_sc if is_sc else X_tr
+                scores = cross_val_score(m, X_cv, y_tr, cv=skf, scoring='accuracy')
+                rows.append({
+                    'Model': name,
+                    'CV Mean': scores.mean(),
+                    'CV Std': scores.std(),
+                    'Test Acc': accuracy_score(
+                        y_te,
+                        m.predict(X_te_sc if is_sc else X_te),
+                    ),
+                })
         cmp_df = pd.DataFrame(rows).sort_values('CV Mean', ascending=False)
         st.dataframe(
             cmp_df.style.format({
@@ -583,12 +592,18 @@ def render_energy_dashboard(page: str):
         st.title('Learning Curves')
         cols = st.columns(3)
         idx = 0
+        precomputed_curves = resources.get('learning_curves', {})
 
         for name, (m, _, _s) in models.items():
             if not hasattr(m, 'named_steps'):
                 continue
 
-            fig = fig_learning(m, X_tr, y_tr, name)
+            curve = precomputed_curves.get(name)
+            fig = (
+                fig_precomputed_learning(curve, name)
+                if curve is not None
+                else fig_learning(m, X_tr, y_tr, name)
+            )
             cols[idx % 3].pyplot(fig)
             plt.close(fig)
             idx += 1
