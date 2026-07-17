@@ -1,4 +1,10 @@
 ﻿# EnergyTypeNet
+[![CI](https://github.com/bartoszbryg/EnergyTypeNet/actions/workflows/ci.yml/badge.svg)](https://github.com/bartoszbryg/EnergyTypeNet/actions/workflows/ci.yml)
+[![Python 3.11](https://img.shields.io/badge/Python-3.11-blue)](https://www.python.org/downloads/release/python-3110/)
+[![Live App](https://img.shields.io/badge/Live%20App-Streamlit-FF4B4B?logo=streamlit)](YOUR_STREAMLIT_APP_URL) <!-- Replace YOUR_STREAMLIT_APP_URL with the actual deployed URL after first deployment -->
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+> [Open Live Demo](YOUR_STREAMLIT_APP_URL) — Upload any CSV for instant AutoML analysis with feature importance and model comparison, or explore the EnergyTypeNet building-energy classifier with interactive decision boundaries, ROC curves and a multi-turn AI-powered dataset assistant that answers questions about the data.
 
 I built EnergyTypeNet to predict whether a building is Residential, Commercial or Industrial from energy-consumption and building-attribute data. The core idea was to go beyond simply applying sklearn models and implement several algorithms from scratch so I could understand what is happening inside the learning process. I originally built three custom NumPy classifiers: an attention-weighted nearest-neighbor classifier using exponential kernel weighting, a One-vs-Rest logistic regression trained with gradient descent and L2 regularization, and a multiclass Softmax regression with a joint weight matrix and categorical cross-entropy loss. I later extended this into a broader advanced model suite with custom decision trees, SVM, Naive Bayes variants, Bayesian linear regression, regularized regression, dimensionality reduction, unsupervised clustering, custom Bagging and AdaBoost ensembles, a custom multi-layer perceptron trained with backpropagation and a PyTorch tabular deep-learning workflow. The project now covers Ridge, Lasso, ElasticNet, regularized logistic regression, PCA, LDA, Kernel PCA, t-SNE, optional UMAP, K-Means, DBSCAN, Gaussian Mixture Models, agglomerative hierarchical clustering, ensemble diversity diagnostics, Bagging, AdaBoost, Extra Trees, histogram gradient boosting, neural-network activation functions, initialization, optimizers, dropout, early stopping, MLP classification/regression, PyTorch `nn.Module` training loops, autoencoder-based reconstruction/anomaly detection, convolutional neural-network foundations on image data and recurrent neural-network foundations for sequential data.
 
@@ -7,6 +13,26 @@ On top of those custom models, I trained sklearn Logistic Regression, MLP and XG
 The project also grew into a reusable AutoML-style tool through the AI Dataset Assistant. Instead of working only on the original building-energy dataset, the dashboard can now accept a custom CSV file, profile the dataset, detect missing values and data types, suggest possible target columns, infer whether the task should be classification or regression, recommend usable feature columns, rank features with mutual information, compare all selected features against a compact feature set, train multiple baseline models and generate a short natural-language dataset report grounded in computed results. It also has a multi-turn dataset chat assistant with deterministic grounded answers, context-aware follow-up routing, safe diagnostic computation tools, suggested questions, JSON chat export and optional local or hosted LLM streaming, so the explanations can feel more natural while still staying tied to actual model outputs.
 
 The research part answers a specific question I had: is the accuracy ceiling caused by too little data, or by the classes being too similar in feature space? Notebook 06 runs a synthetic experiment showing that the issue is not caused by insufficient data, so collecting more data would not fix it. One important finding was that the extended feature set can produce near-perfect validation scores, but that is not necessarily a better scientific result because some features may encode the label too directly. The more honest benchmark is the smaller core-feature setup, where performance is lower but more realistic.
+
+## Screenshots
+
+| Overview | Model Comparison |
+| --- | --- |
+| ![EnergyTypeNet overview with metrics and accuracy chart](screenshots/01_overview.png) | ![Cross-validation model comparison table and chart](screenshots/02_model_comparison.png) |
+
+| Decision Boundaries | ROC Curves |
+| --- | --- |
+| ![Decision boundaries for the EnergyTypeNet classifiers](screenshots/03_decision_boundaries.png) | ![Multiclass ROC curves with AUC values](screenshots/04_roc_curves.png) |
+
+| Custom Dataset Analysis | Chat Assistant |
+| --- | --- |
+| ![AutoML analysis for an uploaded custom dataset](screenshots/05_custom_dataset_analysis.png) | ![Multi-turn AI dataset assistant conversation](screenshots/06_chat_assistant.png) |
+
+| Live Prediction |
+| --- |
+| ![Interactive live building-type predictions and probabilities](screenshots/07_live_prediction.png) |
+
+*These screenshots show the deployed Streamlit app and will appear once the PNG files are added to `screenshots/` by following [`screenshots/README.md`](screenshots/README.md).*
 
 ---
 
@@ -641,6 +667,25 @@ Warnings from FastAPI/Starlette internals or sklearn MLP convergence on tiny tes
 
 ## Deployment
 
+### Streamlit Cloud
+
+<!-- Replace YOUR_STREAMLIT_APP_URL with the actual deployed URL after first deployment -->
+Live app: [YOUR_STREAMLIT_APP_URL](YOUR_STREAMLIT_APP_URL)
+
+To deploy a personal fork:
+
+1. Fork this repository on GitHub.
+2. Go to [share.streamlit.io](https://share.streamlit.io) and sign in with your GitHub account.
+3. Click **New App** and select your fork.
+4. Choose the `main` branch and set the main file path to `dashboard.py`.
+5. Open **Advanced Settings** and select Python 3.11.
+6. Optionally add OpenAI or Anthropic API keys through the **Secrets** interface using the format in `.streamlit/secrets.toml.example`.
+7. Click **Deploy**.
+
+Deployment typically completes in about two minutes.
+
+The deployed app supports all features except local Ollama streaming, because Ollama requires an instance running locally on port `11434`, which is unavailable on Streamlit Cloud. OpenAI and Anthropic work fully in the cloud when their API keys are added through Streamlit Secrets.
+
 ### Streamlit Dashboard
 
 The easiest public deployment path is Streamlit Community Cloud:
@@ -740,6 +785,6 @@ The AI Dataset Assistant extends the project beyond this one dataset by making t
 
 Planned future improvements:
 
-- `deploy-streamlit`: add a public Streamlit deployment link and screenshots after the app is stable.
 - `model-card-export`: export the dataset report, model diagnostics and selected chat explanation as a clean Markdown or PDF model card.
 - `data-validation-suite`: add stronger schema checks, drift checks and feature-leakage warnings for uploaded CSV files.
+- `explainability`: integrate SHAP values and LIME explanations into the dashboard and API prediction responses so users can understand why a building received a particular energy-consumption classification.
