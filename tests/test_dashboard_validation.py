@@ -41,6 +41,16 @@ def test_accepts_balanced_multiclass_target():
     assert result.n_classes == 3
 
 
+def test_rejects_target_with_more_than_ten_classes():
+    result = validate_classification_target(
+        pd.Series([value for value in range(11) for _ in range(8)])
+    )
+
+    assert not result.valid
+    assert result.n_classes == 11
+    assert "too many" in result.reason
+
+
 def test_recommends_target_like_categorical_column_first():
     frame = pd.DataFrame(
         {
@@ -51,3 +61,14 @@ def test_recommends_target_like_categorical_column_first():
     )
 
     assert recommend_classification_targets(frame) == ["Building Type", "Region"]
+
+
+def test_does_not_recommend_high_cardinality_integer_column():
+    frame = pd.DataFrame(
+        {
+            "Building Type": ["commercial", "industrial", "residential"] * 20,
+            "Appliances Used": list(range(1, 21)) * 3,
+        }
+    )
+
+    assert recommend_classification_targets(frame) == ["Building Type"]

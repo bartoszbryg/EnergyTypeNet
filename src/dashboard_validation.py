@@ -20,7 +20,7 @@ class ClassificationTargetValidation:
 
 def _class_limit(n_rows: int) -> int:
     """Keep charts/models useful while allowing ordinary multiclass datasets."""
-    return min(50, max(10, int(n_rows * 0.20)))
+    return min(10, max(2, n_rows // 7))
 
 
 def validate_classification_target(

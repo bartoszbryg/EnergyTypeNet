@@ -117,16 +117,19 @@ def build_sklearn_models(n_classes: int, random_state: int = 42) -> dict:
         ),
     )
 
-    xgb = XGBClassifier(
+    xgb_options = dict(
         max_depth=3,
         learning_rate=0.05,
         n_estimators=100,
-        objective='multi:softprob',
-        num_class=n_classes,
         eval_metric='mlogloss',
         verbosity=0,
         random_state=random_state,
     )
+    if n_classes == 2:
+        xgb_options['objective'] = 'binary:logistic'
+    else:
+        xgb_options.update(objective='multi:softprob', num_class=n_classes)
+    xgb = XGBClassifier(**xgb_options)
 
     return {'LR (sklearn)': lr, 'MLP': mlp, 'XGBoost': xgb}
 
