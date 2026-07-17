@@ -62,6 +62,10 @@ from src.chat_agent import (
     utc_timestamp,
 )
 from src.data import CLASSES as ENERGY_CLASSES, load_features, load_raw
+from src.dashboard_validation import (
+    recommend_classification_targets,
+    validate_classification_target,
+)
 from src.preloaded_artifacts import (
     PreloadedArtifactError,
     load_artifact as load_preloaded_artifact,
@@ -676,6 +680,8 @@ def render_custom_dashboard():
         st.dataframe(df_raw.head(20), width='stretch')
 
     all_cols = list(df_raw.columns)
+    target_recommendations = recommend_classification_targets(df_raw)
+    default_target = target_recommendations[0] if target_recommendations else all_cols[-1]
 
     st.subheader('Column configuration')
     col1, col2 = st.columns(2)
@@ -684,7 +690,7 @@ def render_custom_dashboard():
         target_col = st.selectbox(
             'Target column (what to predict)',
             all_cols,
-            index=len(all_cols) - 1,
+            index=all_cols.index(default_target),
         )
 
     remaining = [c for c in all_cols if c != target_col]
@@ -704,16 +710,23 @@ def render_custom_dashboard():
         st.warning('Select at least one feature column.')
         return
 
+    target_validation = validate_classification_target(df_raw[target_col])
+    if not target_validation.valid:
+        st.error(target_validation.reason)
+        if target_recommendations:
+            alternatives = [name for name in target_recommendations if name != target_col]
+            if alternatives:
+                st.info(
+                    'Recommended classification target'
+                    + ('s' if len(alternatives) > 1 else '')
+                    + ': '
+                    + ', '.join(f'`{name}`' for name in alternatives[:5])
+                )
+        return
+
     y_raw = df_raw[target_col].values
     y, classes = encode_labels(y_raw)
     n_classes = len(classes)
-
-    if n_classes < 2:
-        st.error('Target column must have at least 2 unique values.')
-        return
-
-    if n_classes > 10:
-        st.warning(f'Target has {n_classes} classes - models may be slow or inaccurate.')
 
     # Numeric columns stay as-is; categorical columns become one-hot features.
     feat_parts = []
