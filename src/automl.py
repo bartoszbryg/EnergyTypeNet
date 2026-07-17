@@ -629,6 +629,31 @@ def answer_dataset_question(
     """Answer common dataset questions from computed statistics only."""
     q = question.lower()
 
+    if 'target' in q and any(
+        signal in q for signal in ['best', 'which', 'recommend', 'choose', 'suitable']
+    ):
+        if prepared is None:
+            return (
+                'Choose a target based on the outcome you want to predict. For '
+                'classification, use a repeated categorical label with enough '
+                'examples per class; for regression, use a meaningful numeric outcome.'
+            )
+
+        return (
+            f'`{prepared.target_col}` is the currently selected target and this '
+            f'dataset is being treated as a {prepared.task_type} problem. There is '
+            'no universally best target column: the correct target is the outcome '
+            'your project intends to predict. Validate that it is available at '
+            'prediction time and is not derived from the selected features. '
+            + (
+                f'This target currently contains {len(prepared.classes or [])} classes '
+                f'across {len(prepared.y):,} usable rows.'
+                if prepared.task_type == 'classification'
+                else f'This numeric target contains {len(np.unique(prepared.y)):,} distinct values '
+                f'across {len(prepared.y):,} usable rows.'
+            )
+        )
+
     if any(word in q for word in ['overfit', 'overfitting', 'generalize', 'generalization', 'leakage', 'leak']):
         if results is None or results.empty:
             return (
@@ -692,6 +717,22 @@ def answer_dataset_question(
             "Check the profile table for column-level missing percentages."
         )
 
+    # Resolve the subject before generic ranking words such as "best".
+    if any(word in q for word in ['feature', 'important', 'column', 'predictor', 'variable']):
+        if feature_ranking is None or feature_ranking.empty:
+            return 'Run feature ranking first, then I can summarize the strongest columns.'
+
+        top = feature_ranking.head(5)
+        measured = ', '.join(
+            f"{row.feature} (MI {float(row.mutual_information):.3f})"
+            for row in top.itertuples()
+        )
+        return (
+            f"The strongest measured feature candidates are: {measured}. "
+            'These are associations with the selected target, not proof of causation; '
+            'confirm them with held-out model performance and leakage checks.'
+        )
+
     if any(word in q for word in ['best', 'model', 'accuracy', 'score', 'r2']):
         if results is None or results.empty:
             return 'Train baseline models first, then I can summarize the best model.'
@@ -708,13 +749,6 @@ def answer_dataset_question(
             f"The best baseline is {best['model']} with test R2 "
             f"{best['test_r2']:.3f} and MAE {best['test_mae']:.3f}."
         )
-
-    if any(word in q for word in ['feature', 'important', 'column']):
-        if feature_ranking is None or feature_ranking.empty:
-            return 'Run feature ranking first, then I can summarize the strongest columns.'
-
-        names = ', '.join(feature_ranking['feature'].head(5).astype(str))
-        return f"The strongest measured feature candidates are: {names}."
 
     if any(word in q for word in ['classification', 'regression', 'task']):
         if prepared is None:

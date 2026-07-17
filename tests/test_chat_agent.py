@@ -19,6 +19,18 @@ def test_classify_question_model_performance():
     assert classify_question('which model has the best accuracy?', {}, None) == 'model_performance'
 
 
+def test_classify_question_target_selection_before_best_model_rule():
+    assert classify_question('What is the best target column?', {}, None) == 'target_selection'
+
+
+def test_classify_question_best_features_before_best_model_rule():
+    assert classify_question('What are the best features?', {}, None) == 'feature_importance'
+    assert (
+        classify_question('But I asked what are the best features?', {}, None)
+        == 'feature_importance'
+    )
+
+
 def test_chat_message_generates_timestamp_when_omitted():
     message = ChatMessage(role='user', content='hello')
 
@@ -26,6 +38,17 @@ def test_chat_message_generates_timestamp_when_omitted():
     assert message.source == 'user'
     assert message.question_type == 'general'
     assert message.grounded is False
+
+
+def test_chat_message_accepts_guarded_tool_source():
+    message = ChatMessage(
+        role='assistant',
+        content='Computed from model results.',
+        source='tool',
+        grounded=True,
+    )
+
+    assert message.source == 'tool'
 
 
 def test_classify_question_computation_request():

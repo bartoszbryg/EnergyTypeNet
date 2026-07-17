@@ -4,7 +4,7 @@
 [![Live App](https://img.shields.io/badge/Live%20App-Streamlit-FF4B4B?logo=streamlit)](YOUR_STREAMLIT_APP_URL) <!-- Replace YOUR_STREAMLIT_APP_URL with the actual deployed URL after first deployment -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> [Open Live Demo](YOUR_STREAMLIT_APP_URL) — Upload any CSV for instant AutoML analysis with feature importance and model comparison, or explore the EnergyTypeNet building-energy classifier with interactive decision boundaries, ROC curves and a multi-turn AI-powered dataset assistant that answers questions about the data.
+> [Open Live Demo](YOUR_STREAMLIT_APP_URL) — Upload a supported tabular classification CSV for model comparison and visual diagnostics, use the broader AI Dataset Assistant for classification or regression analysis, or explore the bundled EnergyTypeNet demo with interactive decision boundaries, ROC curves and grounded dataset Q&A.
 
 I built EnergyTypeNet to predict whether a building is Residential, Commercial or Industrial from energy-consumption and building-attribute data. The core idea was to go beyond simply applying sklearn models and implement several algorithms from scratch so I could understand what is happening inside the learning process. I originally built three custom NumPy classifiers: an attention-weighted nearest-neighbor classifier using exponential kernel weighting, a One-vs-Rest logistic regression trained with gradient descent and L2 regularization, and a multiclass Softmax regression with a joint weight matrix and categorical cross-entropy loss. I later extended this into a broader advanced model suite with custom decision trees, SVM, Naive Bayes variants, Bayesian linear regression, regularized regression, dimensionality reduction, unsupervised clustering, custom Bagging and AdaBoost ensembles, a custom multi-layer perceptron trained with backpropagation and a PyTorch tabular deep-learning workflow. The project now covers Ridge, Lasso, ElasticNet, regularized logistic regression, PCA, LDA, Kernel PCA, t-SNE, optional UMAP, K-Means, DBSCAN, Gaussian Mixture Models, agglomerative hierarchical clustering, ensemble diversity diagnostics, Bagging, AdaBoost, Extra Trees, histogram gradient boosting, neural-network activation functions, initialization, optimizers, dropout, early stopping, MLP classification/regression, PyTorch `nn.Module` training loops, autoencoder-based reconstruction/anomaly detection, convolutional neural-network foundations on image data and recurrent neural-network foundations for sequential data.
 
@@ -430,11 +430,15 @@ Uses the bundled energy-consumption dataset and project models. It includes:
 
 ### Custom Dataset Mode
 
-Lets a user upload a CSV, manually choose target/features and run a reusable tabular-modeling workflow with visual diagnostics.
+Lets a user upload a supported tabular classification CSV, choose a categorical target and feature columns, and run a reusable model-comparison workflow with visual diagnostics. The implementation is data-driven rather than tied to EnergyTypeNet column names: it discovers the uploaded schema, handles numeric and ordinary categorical features, encodes arbitrary class labels and configures binary or multiclass models from the observed target.
+
+The public workflow validates the selected target before training. It rejects continuous numeric targets, single-class targets, classes with too few examples for an 80/20 stratified holdout plus 5-fold cross-validation, and targets with more than 10 classes. It also requires at least one selected feature, resets controls and cached results when the uploaded file changes, and replaces unstable learning curves with an explanatory message for datasets with fewer than 50 usable rows or fewer than 10 examples per class.
+
+Supported inputs are ordinary comma-separated tabular classification files within the configured 10 MB upload limit. They need at least two target classes, at least seven usable rows per class and numeric and/or conventional categorical feature columns. The mode is not intended for continuous regression targets, multilabel classification, time-series or grouped validation, images or documents stored in CSV cells, extremely high-cardinality text, unusual delimiters or encodings, or datasets that become too small after incomplete rows are removed. Those constraints keep failures explicit and prevent misleading charts, but no application can guarantee successful modeling of every syntactically valid CSV.
 
 ### AI Dataset Assistant Mode
 
-Turns any uploaded CSV into a guided AutoML-style analysis:
+Turns a supported tabular CSV into a guided AutoML-style analysis:
 
 - profiles rows, columns, dtypes, missing values and duplicate rows
 - suggests likely target columns
@@ -454,7 +458,7 @@ The assistant uses deterministic, computed-statistic answers by default. If the 
 
 The chat assistant is intentionally constrained: it runs only safe predefined diagnostics from already prepared dashboard objects, then can explain those computed summaries deterministically or pass them to an LLM provider for a more natural response. It does not execute arbitrary Python, access arbitrary files, mutate the dataset or let the LLM decide which code to run.
 
-The upload workflow is guarded for normal public use: it expects CSV input, removes empty rows and columns, checks whether a target can be modeled, rejects continuous numeric targets accidentally used as classification labels and shows friendly messages when the selected dataset cannot be prepared.
+The upload workflow is guarded for normal public use: it expects tabular CSV input, removes empty rows and columns, checks whether a target can be modeled, validates classification support before stratified splitting and shows friendly messages when the selected dataset cannot be prepared. Unlike Custom Dataset mode, the AI Dataset Assistant also supports numeric regression targets. Baseline results and chat remain locked to the current dataset/target/feature configuration, and the chat appears only after training and report generation finish.
 
 ---
 
@@ -697,7 +701,7 @@ The easiest public deployment path is Streamlit Community Cloud:
 5. Set the main file path to `dashboard.py`.
 6. Deploy.
 
-The public Streamlit version supports CSV upload, profiling, target/feature suggestions, baseline training, feature ranking, model comparison, dataset reports and deterministic dataset Q&A. Local Ollama streaming only works when running the project locally with Ollama installed.
+The public Streamlit version supports guarded tabular CSV upload, profiling, target/feature suggestions, classification or regression baseline training through the AI Dataset Assistant, feature ranking, model comparison, dataset reports and deterministic dataset Q&A. Custom Dataset mode provides the richer classifier-specific plots for supported categorical targets. Local Ollama streaming only works when running the project locally with Ollama installed; Streamlit Cloud falls back safely to deterministic grounded answers when local Ollama is unavailable.
 
 ### FastAPI
 

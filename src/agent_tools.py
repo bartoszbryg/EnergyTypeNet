@@ -91,26 +91,26 @@ def run_dataset_computation(
         )
 
     tables: dict[str, pd.DataFrame] = {}
-    answer_parts = [_data_quality_summary(profile)]
+    sections: dict[str, str] = {'data_quality': _data_quality_summary(profile)}
 
     if results is not None and not results.empty:
         model_diagnostics = compute_model_diagnostics(prepared, results)
         tables['model_diagnostics'] = model_diagnostics
-        answer_parts.append(_model_diagnostics_text(prepared, model_diagnostics))
+        sections['model'] = _model_diagnostics_text(prepared, model_diagnostics)
 
         complexity = compute_model_complexity(results)
         tables['model_complexity'] = complexity
-        answer_parts.append(_complexity_text(complexity))
+        sections['complexity'] = _complexity_text(complexity)
 
     if feature_ranking is not None and not feature_ranking.empty:
         feature_diagnostics = compute_feature_diagnostics(prepared, feature_ranking)
         tables['feature_diagnostics'] = feature_diagnostics
-        answer_parts.append(_feature_diagnostics_text(feature_diagnostics))
+        sections['features'] = _feature_diagnostics_text(feature_diagnostics)
 
         target_associations = compute_target_associations(prepared, feature_ranking)
         if not target_associations.empty:
             tables['target_associations'] = target_associations
-            answer_parts.append(_target_association_text(target_associations))
+            sections['associations'] = _target_association_text(target_associations)
 
     if (
         results is not None
@@ -120,7 +120,46 @@ def run_dataset_computation(
     ):
         comparison = compare_feature_sets(prepared, results, compact_results)
         tables['feature_set_comparison'] = comparison
-        answer_parts.append(_feature_set_comparison_text(prepared, comparison))
+        sections['feature_sets'] = _feature_set_comparison_text(prepared, comparison)
+
+    q = question.lower()
+    answer_parts: list[str] | None = None
+    if any(term in q for term in ['missing', 'null', 'duplicate', 'data quality']):
+        selected_sections = ['data_quality']
+    elif any(term in q for term in ['compact', 'feature set']):
+        selected_sections = ['feature_sets']
+    elif any(term in q for term in ['feature importance', 'importance', 'correlation', 'mutual information']):
+        selected_sections = ['features', 'associations']
+    elif any(term in q for term in ['overfit', 'overfitting', 'generalize', 'leakage', 'gap']):
+        answer_parts = [
+            _overfitting_assessment_text(
+                prepared,
+                tables.get('model_diagnostics'),
+                tables.get('feature_set_comparison'),
+            )
+        ]
+        selected_sections = []
+    elif any(term in q for term in ['best model', 'model selection']):
+        if any(term in q for term in ['why', 'explain', 'reason']):
+            answer_parts = [
+                _model_choice_explanation_text(
+                    prepared,
+                    tables.get('model_diagnostics'),
+                    tables.get('model_complexity'),
+                )
+            ]
+            selected_sections = []
+        else:
+            selected_sections = ['model', 'complexity']
+    elif 'complexity' in q:
+        selected_sections = ['complexity']
+    else:
+        selected_sections = list(sections)
+
+    if answer_parts is None:
+        answer_parts = [sections[name] for name in selected_sections if sections.get(name)]
+    if not answer_parts:
+        answer_parts = [part for part in sections.values() if part]
 
     return AgentToolResult(
         tool_name='dataset_diagnostics',
@@ -358,6 +397,97 @@ def _complexity_text(complexity: pd.DataFrame) -> str:
         )
 
     return 'Most top candidates are medium or high complexity, so validation matters.'
+
+
+def _model_choice_explanation_text(
+    prepared: PreparedDataset,
+    diagnostics: pd.DataFrame | None,
+    complexity: pd.DataFrame | None,
+) -> str:
+    """Explain a ranking using relative performance and generalization evidence."""
+    if diagnostics is None or diagnostics.empty:
+        return 'Train baseline models first so their performance can be compared.'
+
+    best = diagnostics.iloc[0]
+    metric_name = 'accuracy' if prepared.task_type == 'classification' else 'R2'
+    explanation = (
+        f"{best['model']} ranks first because its test {metric_name} is "
+        f"{float(best['test_metric']):.3f}. Its cross-validation score is "
+        f"{float(best['cv_metric']):.3f}, a CV/test gap of "
+        f"{float(best['cv_test_gap']):.3f}."
+    )
+
+    if len(diagnostics) > 1:
+        runner_up = diagnostics.iloc[1]
+        margin = float(best['test_metric'] - runner_up['test_metric'])
+        explanation += (
+            f" The runner-up is {runner_up['model']} at "
+            f"{float(runner_up['test_metric']):.3f}, so the observed test-score "
+            f"margin is {margin:.3f}."
+        )
+        if abs(margin) <= 0.01:
+            explanation += (
+                ' That is effectively a tie at this precision; prefer the simpler '
+                'candidate and confirm the ranking with another split.'
+            )
+
+    if complexity is not None and not complexity.empty:
+        row = complexity[complexity['model'].astype(str) == str(best['model'])]
+        if not row.empty:
+            explanation += f" Its estimated model complexity is {row.iloc[0]['complexity'].lower()}."
+
+    return explanation
+
+
+def _overfitting_assessment_text(
+    prepared: PreparedDataset,
+    diagnostics: pd.DataFrame | None,
+    comparison: pd.DataFrame | None,
+) -> str:
+    """Assess overfitting conservatively without claiming more than held-out evidence."""
+    if diagnostics is None or diagnostics.empty:
+        return 'Train baseline models first so cross-validation and test scores can be compared.'
+
+    best = diagnostics.iloc[0]
+    gap = float(best['cv_test_gap'])
+    abs_gap = abs(gap)
+    metric_name = 'accuracy' if prepared.task_type == 'classification' else 'R2'
+
+    if gap > 0.10:
+        verdict = 'This is a meaningful overfitting warning because CV is substantially higher than the test score.'
+    elif gap < -0.10:
+        verdict = 'This does not look like ordinary overfitting; the test split may instead be unusually easy or small.'
+    elif abs_gap <= 0.05:
+        verdict = 'The gap is small, so these scores do not show a strong overfitting signal.'
+    else:
+        verdict = 'The gap is moderate, so validate the result with repeated or nested cross-validation.'
+
+    answer = (
+        f"For {best['model']}, CV {metric_name} is {float(best['cv_metric']):.3f} "
+        f"and test {metric_name} is {float(best['test_metric']):.3f}, giving a "
+        f"CV/test gap of {gap:.3f}. {verdict}"
+    )
+
+    near_best_count = int(diagnostics['near_best'].sum())
+    if float(best['test_metric']) >= 0.98 and near_best_count > 1:
+        answer += (
+            ' Several models are near-perfect, so independently check target leakage, '
+            'duplicate entities across splits, and features unavailable at prediction time.'
+        )
+
+    if comparison is not None and len(comparison) >= 2:
+        full = float(comparison.iloc[0]['primary_metric'])
+        compact = float(comparison.iloc[1]['primary_metric'])
+        delta = full - compact
+        answer += (
+            f" The full-versus-compact {metric_name} difference is {delta:.3f} "
+            f"({full:.3f} versus {compact:.3f})."
+        )
+        if delta >= 0.15:
+            answer += ' That large feature-set gap is an additional leakage or split-sensitivity warning.'
+
+    answer += ' This is a diagnostic assessment, not proof; a separate untouched test set is the strongest check.'
+    return answer
 
 
 def _feature_diagnostics_text(diagnostics: pd.DataFrame) -> str:

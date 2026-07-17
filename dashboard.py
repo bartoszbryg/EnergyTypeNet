@@ -9,6 +9,7 @@ Run from repo root:
 """
 
 import io
+import hashlib
 import json
 import time
 import numpy as np
@@ -112,7 +113,9 @@ def build_sklearn_models(n_classes: int, random_state: int = 42) -> dict:
             activation='relu',
             alpha=0.01,
             max_iter=1200,
-            early_stopping=True,
+            # Cross-validation already estimates generalization. Disabling the
+            # estimator's extra validation split keeps small uploads reliable.
+            early_stopping=False,
             random_state=random_state,
         ),
     )
@@ -307,6 +310,24 @@ def fig_decision_boundary_2d(model, X2, y, classes, sc2, title, h=0.08):
 
 
 def fig_learning(model, X, y, title):
+    _, class_counts = np.unique(y, return_counts=True)
+    if len(X) < 50 or int(class_counts.min()) < 10:
+        fig, ax = plt.subplots(figsize=(4, 3))
+        ax.axis('off')
+        ax.text(
+            0.5,
+            0.5,
+            'Learning curve not shown for this small dataset.\n'
+            'Use at least 50 rows and 10 examples per class\n'
+            'for stable incremental training subsets.',
+            ha='center',
+            va='center',
+            transform=ax.transAxes,
+            fontsize=9,
+        )
+        ax.set_title(title, fontsize=9)
+        return fig
+
     try:
         tr_sizes, tr_sc, val_sc = learning_curve(
             model,
@@ -657,7 +678,8 @@ def encode_labels(y_raw: np.ndarray):
 def render_custom_dashboard():
     st.title('Custom Dataset - Universal Classifier')
     st.markdown(
-        'Upload **any CSV**, pick your target column and features, '
+        'Upload a supported **tabular classification CSV**, pick a categorical '
+        'target column and features, '
         'and the full pipeline (5-fold CV, confusion matrices, ROC, PR curves, '
         'decision boundaries via PCA) runs automatically.'
     )
@@ -677,6 +699,7 @@ def render_custom_dashboard():
         return
 
     df_raw = pd.read_csv(uploaded).dropna()
+    dataset_widget_key = hashlib.sha256(uploaded.getvalue()).hexdigest()[:12]
     st.success(f'Loaded {len(df_raw):,} rows x {df_raw.shape[1]} columns')
 
     with st.expander('Preview data', expanded=False):
@@ -694,6 +717,7 @@ def render_custom_dashboard():
             'Target column (what to predict)',
             all_cols,
             index=all_cols.index(default_target),
+            key=f'custom_target_{dataset_widget_key}',
         )
 
     remaining = [c for c in all_cols if c != target_col]
@@ -707,6 +731,7 @@ def render_custom_dashboard():
             'Feature columns',
             options=remaining,
             default=numeric_cols[:10],
+            key=f'custom_features_{dataset_widget_key}_{target_col}',
         )
 
     if not feature_cols:
@@ -1025,6 +1050,10 @@ def render_dataset_assistant():
         st.session_state.last_compact_results = None
     if 'last_feature_ranking' not in st.session_state:
         st.session_state.last_feature_ranking = None
+    if 'last_training_signature' not in st.session_state:
+        st.session_state.last_training_signature = None
+    if 'last_dataset_report' not in st.session_state:
+        st.session_state.last_dataset_report = None
     if 'last_tool_tables' not in st.session_state:
         st.session_state.last_tool_tables = {}
     if 'pending_question' not in st.session_state:
@@ -1057,6 +1086,8 @@ def render_dataset_assistant():
         st.session_state.last_results = None
         st.session_state.last_compact_results = None
         st.session_state.last_feature_ranking = None
+        st.session_state.last_training_signature = None
+        st.session_state.last_dataset_report = None
         st.session_state.last_tool_tables = {}
         st.session_state.last_dataset_signature = dataset_signature
 
@@ -1161,6 +1192,22 @@ def render_dataset_assistant():
     )
     st.session_state.last_prepared = prepared
 
+    training_signature = (
+        dataset_signature,
+        target_col,
+        task_type,
+        tuple(feature_cols),
+    )
+    if st.session_state.last_training_signature != training_signature:
+        if st.session_state.last_training_signature is not None:
+            st.session_state.chat_history.clear()
+            st.session_state.last_tool_tables = {}
+            st.session_state.pending_question = None
+            st.session_state.pending_response = None
+        st.session_state.last_results = None
+        st.session_state.last_compact_results = None
+        st.session_state.last_dataset_report = None
+
     if prepared.classes:
         st.caption('Classes: ' + ', '.join(f'`{cls}`' for cls in prepared.classes))
 
@@ -1234,6 +1281,7 @@ def render_dataset_assistant():
                 results, _ = train_baselines(prepared)
                 st.session_state.last_results = results
                 st.session_state.last_compact_results = None
+                st.session_state.last_training_signature = training_signature
 
                 if compare_compact:
                     compact_prepared = prepare_dataset(
@@ -1393,6 +1441,7 @@ def render_dataset_assistant():
             feature_ranking,
             compact_results,
         )
+        st.session_state.last_dataset_report = report
         st.markdown(report)
         st.download_button(
             'Download dataset report',
@@ -1400,6 +1449,35 @@ def render_dataset_assistant():
             file_name='dataset_report.md',
             mime='text/markdown',
         )
+
+    assistant_ready = (
+        st.session_state.last_training_signature == training_signature
+        and st.session_state.last_results is not None
+        and st.session_state.last_dataset_report is not None
+    )
+
+    if not assistant_ready:
+        st.subheader('6. Dataset Assistant')
+        st.info(
+            'Train the baseline models and wait for the dataset report to finish. '
+            'The chat will appear when those results are ready.'
+        )
+        return
+
+    if task_type == 'classification':
+        target_validation = validate_classification_target(df[target_col])
+        if not target_validation.valid:
+            st.warning(target_validation.reason)
+            alternatives = recommend_classification_targets(df)
+            alternatives = [name for name in alternatives if name != target_col]
+            if alternatives:
+                st.info(
+                    'Recommended classification target'
+                    + ('s' if len(alternatives) > 1 else '')
+                    + ': '
+                    + ', '.join(f'`{name}`' for name in alternatives[:5])
+                )
+            return
 
     st.subheader('6. Dataset Assistant')
 
@@ -1411,7 +1489,12 @@ def render_dataset_assistant():
             'for richer explanations.'
         )
     elif provider == 'ollama':
-        st.info('Using Ollama locally. Answers are grounded in dataset statistics.')
+        st.info(
+            'Using Ollama locally. It requires this dashboard to run on the same '
+            'computer as Ollama; Streamlit Cloud cannot connect to your localhost. '
+            'Answers fall back safely to deterministic dataset statistics if Ollama '
+            'is unavailable.'
+        )
     elif provider == 'openai':
         st.info(
             f"Using OpenAI ({st.session_state.llm_model}). "
@@ -1528,50 +1611,37 @@ def render_dataset_assistant():
         ranking_saved = st.session_state.last_feature_ranking
 
         with st.chat_message('assistant'):
-            with st.spinner('Thinking through the dataset...'):
-                thinking_placeholder = st.empty()
-                thinking_placeholder.markdown('_Thinking through the dataset..._')
-
-                previous_assistant = st.session_state.chat_history.last_assistant_message()
-                tool_result = run_dataset_computation(
-                    question,
-                    profile_saved,
-                    prepared_saved,
-                    results_saved,
-                    ranking_saved,
-                    compact_results_saved,
-                    previous_answer=previous_assistant.content if previous_assistant else None,
-                )
-
-                if tool_result is not None:
-                    deterministic = tool_result.answer
-                    source = tool_result.source
-                    st.session_state.last_tool_tables = tool_result.tables
-                else:
-                    deterministic = handle_follow_up(
-                        question,
-                        st.session_state.chat_history,
-                        profile_saved,
-                        prepared_saved,
-                        results_saved,
-                        ranking_saved,
-                    )
-                    source = 'deterministic'
-
-            answer = deterministic
-            provider = st.session_state.get('llm_provider', 'none')
             response_placeholder = st.empty()
             response_placeholder.markdown('_Thinking through the dataset..._')
 
-            deterministic = handle_follow_up(
+            previous_assistant = st.session_state.chat_history.last_assistant_message()
+            tool_result = run_dataset_computation(
                 question,
-                st.session_state.chat_history,
                 profile_saved,
                 prepared_saved,
                 results_saved,
                 ranking_saved,
+                compact_results_saved,
+                previous_answer=previous_assistant.content if previous_assistant else None,
             )
+
+            if tool_result is not None:
+                deterministic = tool_result.answer
+                source = tool_result.source
+                st.session_state.last_tool_tables = tool_result.tables
+            else:
+                deterministic = handle_follow_up(
+                    question,
+                    st.session_state.chat_history,
+                    profile_saved,
+                    prepared_saved,
+                    results_saved,
+                    ranking_saved,
+                )
+                source = 'deterministic'
+
             answer = deterministic
+            provider = st.session_state.get('llm_provider', 'none')
 
             if provider != 'none':
                 prompt = build_contextualized_prompt(
@@ -1584,11 +1654,8 @@ def render_dataset_assistant():
                     q_type,
                     tool_result=tool_result.answer if tool_result else None,
                 )
-                thinking_placeholder.markdown('_Thinking through the dataset..._')
                 time.sleep(0.25)
-                response_placeholder = st.empty()
                 full_response = ''
-                first_token = True
 
                 try:
                     gen, actual_source = stream_with_fallback(
@@ -1600,14 +1667,9 @@ def render_dataset_assistant():
                     )
 
                     for token in gen:
-                        if first_token:
-                            thinking_placeholder.empty()
-                            first_token = False
-
                         full_response += token
                         response_placeholder.markdown(full_response + '...')
 
-                    thinking_placeholder.empty()
                     response_placeholder.markdown(full_response)
                     answer = full_response
                     source = actual_source
@@ -1620,7 +1682,6 @@ def render_dataset_assistant():
                             full_response,
                         )
                 except Exception as exc:
-                    thinking_placeholder.empty()
                     source = 'deterministic'
                     st.caption(
                         f'LLM streaming failed ({exc}), so the deterministic '
@@ -1628,7 +1689,6 @@ def render_dataset_assistant():
                     )
                     response_placeholder.markdown(answer)
             else:
-                thinking_placeholder.empty()
                 response_placeholder.markdown(answer)
 
             st.caption(
@@ -1719,7 +1779,8 @@ if mode == 'AI Dataset Assistant':
 
     if provider == 'ollama':
         st.sidebar.caption(
-            'Ollama must be running on localhost:11434. '
+            'Local use only: Ollama must run on localhost:11434 on the same computer '
+            'as this dashboard. Streamlit Cloud cannot access your local Ollama. '
             'Start it with `ollama run llama3.1`.'
         )
 
