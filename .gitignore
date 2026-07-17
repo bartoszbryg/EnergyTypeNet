@@ -1,8 +1,13 @@
 .venv/
+venv/
 .env
 .streamlit/secrets.toml
 __pycache__/
 *.pyc
+.pytest_cache/
+*.egg-info/
+dist/
+build/
 .ipynb_checkpoints/
 artifacts/
 mlflow.db
@@ -10,6 +15,8 @@ mlruns/
 results/*
 !results/.gitkeep
 models/
+models/*.joblib
+models/*.pkl
 !src/models/
 !src/models/*.py
 .dvc/cache/
