@@ -41,11 +41,10 @@ class PreloadedArtifactError(RuntimeError):
 
 
 def _file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as file:
-        for chunk in iter(lambda: file.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+    # Git may check out CSV files with CRLF on Windows and LF on Linux.
+    # Normalize line endings so identical tabular content has one fingerprint.
+    canonical_bytes = path.read_bytes().replace(b"\r\n", b"\n")
+    return hashlib.sha256(canonical_bytes).hexdigest()
 
 
 def data_hashes() -> dict[str, str]:
