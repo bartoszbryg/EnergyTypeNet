@@ -619,6 +619,27 @@ def generate_dataset_report(
     return '\n'.join(lines)
 
 
+def build_model_card_data(
+    profile: dict[str, Any] | None,
+    prepared: PreparedDataset | None,
+    results: pd.DataFrame | None,
+    fitted_models: dict[str, Any] | None,
+    feature_ranking: pd.DataFrame | None,
+    dataset_name: str | None = None,
+) -> Any:
+    """Build structured model-card data without introducing circular imports."""
+    from src.model_card import collect_from_automl
+
+    return collect_from_automl(
+        profile=profile,
+        prepared=prepared,
+        results=results,
+        fitted_models=fitted_models,
+        feature_ranking=feature_ranking,
+        dataset_name=dataset_name,
+    )
+
+
 def answer_dataset_question(
     question: str,
     profile: dict[str, Any],

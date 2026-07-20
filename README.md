@@ -56,6 +56,7 @@ The research part answers a specific question I had: is the accuracy ceiling cau
 - Explore results through a Streamlit dashboard.
 - Upload custom CSV files and run a lightweight AutoML workflow.
 - Generate dataset reports and grounded natural-language explanations.
+- Export model cards with dataset details, feature analysis, model diagnostics and selected grounded explanations in Markdown, with optional PDF output when the PDF dependencies are installed.
 - Ask multi-turn dataset questions with chat history, suggested follow-ups and JSON export.
 - Optionally stream LLM answers with local Ollama or hosted OpenAI/Anthropic providers.
 
@@ -453,6 +454,7 @@ Turns a supported tabular CSV into a guided AutoML-style analysis:
 - keeps the user's question visible while the assistant thinks and streams the response
 - runs safe predefined chat-triggered computations for model gaps, CV/test gaps, feature strength, compact-vs-full feature comparisons, simple target correlations and model-complexity summaries
 - suggests follow-up questions and exports the chat history as JSON
+- exports an editable model card in Markdown or optional PDF format, with the option to include grounded explanations from the current chat
 
 The assistant uses deterministic, computed-statistic answers by default. If the user asks a question that needs more evidence, the assistant can run bounded diagnostic computations and show the resulting tables in the dashboard. LLM streaming is optional: local Ollama works without API cost, while hosted OpenAI and Anthropic modes require user-provided API keys and show estimated session usage.
 
@@ -505,6 +507,7 @@ src/
   data.py                            Energy dataset loading and feature engineering
   evaluation.py                      Evaluation and plotting helpers
   llm_assistant.py                   Ollama/OpenAI/Anthropic streaming helpers and usage tracking
+  model_card.py                      Model-card collection, Markdown rendering and optional PDF export
   models/                            Custom model package with one submodule per algorithmic family
   predict.py                         CLI prediction helpers
   synthetic_experiment.py            Synthetic separability experiment
@@ -513,12 +516,12 @@ src/
 tests/
   test_agent_tools.py
   test_api.py
-  test_agent_tools.py
   test_automl.py
   test_data.py
   test_chat_agent.py
   test_llm_assistant.py
   test_llm_provider.py
+  test_model_card.py
   test_models.py
 
 docs/
@@ -560,6 +563,12 @@ Install dependencies:
 ```bash
 python -m pip install --upgrade pip
 pip install -r requirements.txt
+```
+
+Optional PDF model-card export:
+
+```bash
+pip install markdown weasyprint
 ```
 
 ---
@@ -661,7 +670,7 @@ Expected current result:
 
 ```text
 No broken requirements found.
-97 passed
+143 passed
 compileall passed
 ```
 
@@ -675,6 +684,8 @@ Warnings from FastAPI/Starlette internals or sklearn MLP convergence on tiny tes
 
 Live app: [https://energytypenet-ml.streamlit.app/](https://energytypenet-ml.streamlit.app/)
 
+The existing live app is currently configured in Streamlit Community Cloud to deploy from the `deploy-streamlit-config` branch.
+
 To deploy a personal fork:
 
 1. Fork this repository on GitHub.
@@ -687,7 +698,7 @@ To deploy a personal fork:
 
 Deployment typically completes in about two minutes.
 
-The deployed app supports all features except local Ollama streaming, because Ollama requires an instance running locally on port `11434`, which is unavailable on Streamlit Cloud. OpenAI and Anthropic work fully in the cloud when their API keys are added through Streamlit Secrets.
+The deployed app supports the core dashboard features. Local Ollama streaming is unavailable because Ollama requires an instance running locally on port `11434`; OpenAI and Anthropic work in the cloud when their API keys are added through Streamlit Secrets. PDF model-card downloads require the optional PDF dependencies above and remain disabled when those packages are not installed.
 
 ### Streamlit Dashboard
 
@@ -788,6 +799,5 @@ The AI Dataset Assistant extends the project beyond this one dataset by making t
 
 Planned future improvements:
 
-- `model-card-export`: export the dataset report, model diagnostics and selected chat explanation as a clean Markdown or PDF model card.
 - `data-validation-suite`: add stronger schema checks, drift checks and feature-leakage warnings for uploaded CSV files.
 - `explainability`: integrate SHAP values and LIME explanations into the dashboard and API prediction responses so users can understand why a building received a particular energy-consumption classification.

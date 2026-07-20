@@ -31,6 +31,7 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler, label_binarize
 from xgboost import XGBClassifier
 
 from src.automl import (
+    build_model_card_data,
     clean_dataframe,
     generate_dataset_report,
     guess_task_type,
@@ -73,6 +74,25 @@ from src.preloaded_artifacts import (
     train_energy_models,
 )
 
+try:
+    from src.model_card import (
+        ModelCardData,
+        add_chat_explanations,
+        collect_from_energy_dataset,
+        export_model_card_bytes,
+        render_full_model_card,
+        select_notable_exchanges,
+    )
+    MODEL_CARD_AVAILABLE = True
+except ImportError:
+    ModelCardData = None
+    add_chat_explanations = None
+    collect_from_energy_dataset = None
+    export_model_card_bytes = None
+    render_full_model_card = None
+    select_notable_exchanges = None
+    MODEL_CARD_AVAILABLE = False
+
 st.set_page_config(
     page_title='EnergyTypeNet',
     page_icon='building',
@@ -98,6 +118,75 @@ if 'usage_tracker' not in st.session_state:
 
 
 # Shared helpers
+
+def _safe_download_stem(name: str) -> str:
+    stem = name.rsplit('.', 1)[0]
+    cleaned = ''.join(
+        character if character.isalnum() or character in {'-', '_'} else '_'
+        for character in stem
+    ).strip('_')
+    return cleaned or 'dataset'
+
+
+def _pdf_export_status() -> tuple[bool, str | None]:
+    try:
+        import markdown  # noqa: F401
+        import weasyprint  # noqa: F401
+    except (ImportError, OSError) as exc:
+        return False, str(exc)
+    return True, None
+
+
+def _render_model_card_downloads(card, filename_stem: str) -> None:
+    """Render Markdown and optional PDF download controls."""
+    left, right = st.columns(2)
+    markdown_bytes = export_model_card_bytes(card, format='markdown')
+    with left:
+        st.download_button(
+            'Download Markdown (.md)',
+            data=markdown_bytes,
+            file_name=f'{filename_stem}_model_card.md',
+            mime='text/markdown',
+            key=f'model_card_md_{filename_stem}',
+        )
+
+    pdf_available, _ = _pdf_export_status()
+    with right:
+        if pdf_available:
+            try:
+                pdf_bytes = export_model_card_bytes(card, format='pdf')
+                st.download_button(
+                    'Download PDF (.pdf)',
+                    data=pdf_bytes,
+                    file_name=f'{filename_stem}_model_card.pdf',
+                    mime='application/pdf',
+                    key=f'model_card_pdf_{filename_stem}',
+                )
+            except (ImportError, OSError) as exc:
+                st.button('Download PDF (.pdf)', disabled=True)
+                st.caption(f'PDF export is unavailable: {exc}')
+        else:
+            st.button('Download PDF (.pdf)', disabled=True)
+            st.caption('Install PDF support with `pip install markdown weasyprint`.')
+
+
+@st.cache_data
+def _compute_energy_comparison(_models, _X_tr, _y_tr, _X_te, _y_te, _X_tr_sc, _X_te_sc):
+    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    rows = []
+    for name, (model, _, is_scaled) in _models.items():
+        X_cv = _X_tr_sc if is_scaled else _X_tr
+        scores = cross_val_score(model, X_cv, _y_tr, cv=skf, scoring='accuracy')
+        rows.append({
+            'Model': name,
+            'CV Mean': scores.mean(),
+            'CV Std': scores.std(),
+            'Test Acc': accuracy_score(
+                _y_te,
+                model.predict(_X_te_sc if is_scaled else _X_te),
+            ),
+        })
+    return rows
 
 def build_sklearn_models(n_classes: int, random_state: int = 42) -> dict:
     """Standard sklearn + XGBoost pipelines, compatible with any feature count."""
@@ -524,20 +613,9 @@ def render_energy_dashboard(page: str):
         st.title('Model Comparison - 5-fold CV')
         rows = resources.get('comparison')
         if rows is None:
-            skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-            rows = []
-            for name, (m, _, is_sc) in models.items():
-                X_cv = X_tr_sc if is_sc else X_tr
-                scores = cross_val_score(m, X_cv, y_tr, cv=skf, scoring='accuracy')
-                rows.append({
-                    'Model': name,
-                    'CV Mean': scores.mean(),
-                    'CV Std': scores.std(),
-                    'Test Acc': accuracy_score(
-                        y_te,
-                        m.predict(X_te_sc if is_sc else X_te),
-                    ),
-                })
+            rows = _compute_energy_comparison(
+                models, X_tr, y_tr, X_te, y_te, X_tr_sc, X_te_sc
+            )
         cmp_df = pd.DataFrame(rows).sort_values('CV Mean', ascending=False)
         st.dataframe(
             cmp_df.style.format({
@@ -664,6 +742,31 @@ def render_energy_dashboard(page: str):
             plt.tight_layout()
             col.pyplot(fig)
             plt.close(fig)
+
+    with st.expander('Export Model Card', expanded=False):
+        if not MODEL_CARD_AVAILABLE:
+            st.info('Model-card export is unavailable in this installation.')
+        elif not models:
+            st.info('Models must be trained before a model card can be exported.')
+            disabled_columns = st.columns(2)
+            disabled_columns[0].button('Download Markdown (.md)', disabled=True)
+            disabled_columns[1].button('Download PDF (.pdf)', disabled=True)
+        else:
+            try:
+                comparison_rows = resources.get('comparison')
+                if comparison_rows is None:
+                    comparison_rows = _compute_energy_comparison(
+                        models, X_tr, y_tr, X_te, y_te, X_tr_sc, X_te_sc
+                    )
+                comparison = pd.DataFrame(comparison_rows)
+                card = collect_from_energy_dataset(
+                    comparison,
+                    {name: values[0] for name, values in models.items()},
+                    None,
+                )
+                _render_model_card_downloads(card, 'energytypenet')
+            except Exception as exc:
+                st.info(f'Model-card export is not ready yet: {exc}')
 
 
 # Custom dataset mode
@@ -1027,6 +1130,50 @@ def render_custom_dashboard():
             mime='application/json',
         )
 
+    with st.expander('Export Model Card', expanded=False):
+        if not MODEL_CARD_AVAILABLE:
+            st.info('Model-card export is unavailable in this installation.')
+        else:
+            try:
+                card_profile = profile_dataset(df_raw)
+                card_prepared = prepare_dataset(
+                    df_raw,
+                    target_col,
+                    feature_cols,
+                    task_type='classification',
+                )
+                card_ranking = rank_features(card_prepared, top_n=None)
+                dataset_name = _safe_download_stem(uploaded.name)
+                card = build_model_card_data(
+                    card_profile,
+                    card_prepared,
+                    res_df,
+                    fitted_models,
+                    card_ranking,
+                    dataset_name=dataset_name,
+                )
+                card.dataset_description = (
+                    f'Uploaded tabular dataset `{uploaded.name}` analyzed with the '
+                    'EnergyTypeNet interactive classification workflow.'
+                )
+                limitations_key = (
+                    f'model_card_limitations_{dataset_widget_key}_{target_col}_'
+                    f'{hashlib.sha256(str(feature_cols).encode()).hexdigest()[:8]}'
+                )
+                if limitations_key not in st.session_state:
+                    st.session_state[limitations_key] = card.limitations
+                card.limitations = st.text_area(
+                    'Limitations and intended use',
+                    key=limitations_key,
+                    height=150,
+                    help='Customize this text for the intended deployment and data source.',
+                )
+
+                render_full_model_card(card)
+                _render_model_card_downloads(card, dataset_name)
+            except Exception as exc:
+                st.info(f'Model-card export is not ready yet: {exc}')
+
 
 def render_dataset_assistant():
     st.title('AI Dataset Assistant')
@@ -1046,6 +1193,8 @@ def render_dataset_assistant():
         st.session_state.last_prepared = None
     if 'last_results' not in st.session_state:
         st.session_state.last_results = None
+    if 'last_fitted_models' not in st.session_state:
+        st.session_state.last_fitted_models = None
     if 'last_compact_results' not in st.session_state:
         st.session_state.last_compact_results = None
     if 'last_feature_ranking' not in st.session_state:
@@ -1084,6 +1233,7 @@ def render_dataset_assistant():
         st.session_state.last_profile = None
         st.session_state.last_prepared = None
         st.session_state.last_results = None
+        st.session_state.last_fitted_models = None
         st.session_state.last_compact_results = None
         st.session_state.last_feature_ranking = None
         st.session_state.last_training_signature = None
@@ -1205,6 +1355,7 @@ def render_dataset_assistant():
             st.session_state.pending_question = None
             st.session_state.pending_response = None
         st.session_state.last_results = None
+        st.session_state.last_fitted_models = None
         st.session_state.last_compact_results = None
         st.session_state.last_dataset_report = None
 
@@ -1278,8 +1429,9 @@ def render_dataset_assistant():
     if train_clicked:
         with st.spinner('Training baseline models and computing cross-validation scores...'):
             try:
-                results, _ = train_baselines(prepared)
+                results, fitted_models = train_baselines(prepared)
                 st.session_state.last_results = results
+                st.session_state.last_fitted_models = fitted_models
                 st.session_state.last_compact_results = None
                 st.session_state.last_training_signature = training_signature
 
@@ -1566,6 +1718,56 @@ def render_dataset_assistant():
             f'{len(history.messages)} messages | '
             f'{len(history.user_questions())} questions'
         )
+
+    with st.expander('Export Model Card', expanded=False):
+        if not MODEL_CARD_AVAILABLE:
+            st.info('Model-card export is unavailable in this installation.')
+        else:
+            try:
+                dataset_name = _safe_download_stem(uploaded.name)
+                card = build_model_card_data(
+                    st.session_state.last_profile,
+                    st.session_state.last_prepared,
+                    st.session_state.last_results,
+                    st.session_state.last_fitted_models,
+                    st.session_state.last_feature_ranking,
+                    dataset_name=dataset_name,
+                )
+                card.dataset_description = (
+                    f'Uploaded tabular dataset `{uploaded.name}` analyzed with the '
+                    f'EnergyTypeNet AI Dataset Assistant as a {task_type} task.'
+                )
+
+                signature_hash = hashlib.sha256(
+                    repr(training_signature).encode('utf-8')
+                ).hexdigest()[:12]
+                limitations_key = f'assistant_model_card_limitations_{signature_hash}'
+                if limitations_key not in st.session_state:
+                    st.session_state[limitations_key] = card.limitations
+                card.limitations = st.text_area(
+                    'Limitations and intended use',
+                    key=limitations_key,
+                    height=150,
+                    help='Customize this text for the intended deployment and data source.',
+                )
+
+                include_chat = st.checkbox(
+                    'Include chat explanations',
+                    key=f'assistant_model_card_chat_{signature_hash}',
+                )
+                if include_chat:
+                    notable = select_notable_exchanges(history)
+                    card = add_chat_explanations(card, notable)
+                    if not card.chat_explanations:
+                        st.caption(
+                            'No grounded chat explanations are available to include. '
+                            'Ask the Dataset Assistant a question first.'
+                        )
+
+                render_full_model_card(card)
+                _render_model_card_downloads(card, f'{dataset_name}_assistant')
+            except Exception as exc:
+                st.info(f'Model-card export is not ready yet: {exc}')
 
     user_input = st.chat_input('Ask something about your dataset...')
 
