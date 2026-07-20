@@ -1,4 +1,5 @@
 .venv/
+.venv-model-card/
 venv/
 .env
 .streamlit/secrets.toml
