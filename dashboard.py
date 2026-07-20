@@ -12,6 +12,7 @@ import io
 import hashlib
 import json
 import time
+import warnings
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -73,6 +74,24 @@ from src.preloaded_artifacts import (
     load_artifact as load_preloaded_artifact,
     train_energy_models,
 )
+from sklearn.exceptions import ConvergenceWarning
+
+try:
+    from src.data_validation import (
+        ValidationReport,
+        check_column_coverage,
+        run_all_leakage_checks,
+        run_all_schema_checks,
+        run_complete_validation,
+    )
+    DATA_VALIDATION_AVAILABLE = True
+except ImportError:
+    ValidationReport = None
+    check_column_coverage = None
+    run_all_leakage_checks = None
+    run_all_schema_checks = None
+    run_complete_validation = None
+    DATA_VALIDATION_AVAILABLE = False
 
 try:
     from src.model_card import (
@@ -118,6 +137,57 @@ if 'usage_tracker' not in st.session_state:
 
 
 # Shared helpers
+
+def display_validation_report(
+    report,
+    *,
+    heading='Data Quality Analysis',
+    errors_are_blocking=True,
+):
+    """Render structured validation findings and return whether errors are absent."""
+
+    st.subheader(heading)
+    if not report.issues:
+        st.success('Validation passed: no data-quality issues were detected.')
+        return True
+
+    if report.errors():
+        issue_kind = 'blocking issue' if errors_are_blocking else 'critical diagnostic issue'
+        st.error(
+            f'Validation found {len(report.errors())} {issue_kind}'
+            f'{"s" if len(report.errors()) != 1 else ""}.'
+        )
+        for issue in report.errors():
+            location = f' **{issue.column}:**' if issue.column else ''
+            st.markdown(f'-{location} {issue.message}')
+    elif report.warnings():
+        st.warning(
+            f'Validation passed with {len(report.warnings())} warning'
+            f'{"s" if len(report.warnings()) != 1 else ""}. Review the details below.'
+        )
+    else:
+        st.info('Validation passed with informational notes.')
+
+    category_labels = {
+        'schema': ('Schema Issues', '📋'),
+        'leakage': ('Leakage Findings', '⚠️'),
+        'drift': ('Drift Warnings', '📈'),
+    }
+    for category, (label, icon) in category_labels.items():
+        findings = report.by_category(category)
+        if not findings:
+            continue
+        with st.expander(f'{icon} {label} ({len(findings)})', expanded=False):
+            for issue in findings:
+                severity_icon = {'error': '🔴', 'warning': '🟠', 'info': '🔵'}[issue.severity]
+                location = f' **{issue.column}:**' if issue.column else ''
+                st.markdown(f'{severity_icon}{location} {issue.message}')
+                if issue.suggestion:
+                    st.markdown(
+                        f'<span style="color:#777">Suggestion: {issue.suggestion}</span>',
+                        unsafe_allow_html=True,
+                    )
+    return report.passed
 
 def _safe_download_stem(name: str) -> str:
     stem = name.rsplit('.', 1)[0]
@@ -418,26 +488,35 @@ def fig_learning(model, X, y, title):
         return fig
 
     try:
-        tr_sizes, tr_sc, val_sc = learning_curve(
-            model,
-            X,
-            y,
-            cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=42),
-            train_sizes=np.linspace(0.1, 1.0, 7),
-            scoring='accuracy',
-            n_jobs=1,
-        )
-    except Exception as e:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', ConvergenceWarning)
+            tr_sizes, tr_sc, val_sc = learning_curve(
+                model,
+                X,
+                y,
+                cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=42),
+                train_sizes=np.linspace(0.1, 1.0, 7),
+                scoring='accuracy',
+                n_jobs=1,
+                # Some incremental subsets can omit a class. In particular,
+                # XGBoost requires locally contiguous labels, so fail cleanly
+                # instead of emitting FitFailedWarning and plotting NaN scores.
+                error_score='raise',
+            )
+    except (ValueError, RuntimeError):
         fig, ax = plt.subplots(figsize=(4, 3))
+        ax.axis('off')
         ax.text(
             0.5,
             0.5,
-            f'Not available:\n{e}',
+            'Learning curve not available for these incremental subsets.\n'
+            'At least one subset does not contain every target class.',
             ha='center',
             va='center',
             transform=ax.transAxes,
             fontsize=8,
         )
+        ax.set_title(title, fontsize=9)
         return fig
 
     fig, ax = plt.subplots(figsize=(5, 3.5))
@@ -722,26 +801,41 @@ def render_energy_dashboard(page: str):
             energy = st.slider('Energy Consumption (kWh)', 500.0, 10000.0, 4100.0, 50.0)
             sqft = st.slider('Square Footage (ft2)', 500.0, 80000.0, 25000.0, 500.0)
 
-        row_raw = np.array([[energy, sqft]])
-        row_sc = sc.transform(row_raw)
-        pred_cols = st.columns(len(models))
+        prediction_frame = pd.DataFrame([{
+            'Energy Consumption': energy,
+            'Square Footage': sqft,
+        }])
+        coverage = (
+            check_column_coverage(
+                ['Energy Consumption', 'Square Footage'], prediction_frame
+            )
+            if DATA_VALIDATION_AVAILABLE else None
+        )
+        if coverage is not None and not coverage.passed:
+            display_validation_report(coverage, heading='Prediction Input Validation')
+        else:
+            row_raw = prediction_frame[
+                ['Energy Consumption', 'Square Footage']
+            ].to_numpy()
+            row_sc = sc.transform(row_raw)
+            pred_cols = st.columns(len(models))
 
-        for col, (name, (m, _, is_sc)) in zip(pred_cols, models.items()):
-            X_in = row_sc if is_sc else row_raw
-            pred = int(m.predict(X_in)[0])
-            proba = m.predict_proba(X_in)[0]
+            for col, (name, (m, _, is_sc)) in zip(pred_cols, models.items()):
+                X_in = row_sc if is_sc else row_raw
+                pred = int(m.predict(X_in)[0])
+                proba = m.predict_proba(X_in)[0]
 
-            col.metric(name, ENERGY_CLASSES[pred])
+                col.metric(name, ENERGY_CLASSES[pred])
 
-            fig, ax = plt.subplots(figsize=(2.8, 2))
-            ax.barh(ENERGY_CLASSES, proba, color=CLASS_COLORS[:3])
-            ax.set_xlim(0, 1)
-            ax.set_xlabel('Probability')
-            ax.tick_params(labelsize=7)
+                fig, ax = plt.subplots(figsize=(2.8, 2))
+                ax.barh(ENERGY_CLASSES, proba, color=CLASS_COLORS[:3])
+                ax.set_xlim(0, 1)
+                ax.set_xlabel('Probability')
+                ax.tick_params(labelsize=7)
 
-            plt.tight_layout()
-            col.pyplot(fig)
-            plt.close(fig)
+                plt.tight_layout()
+                col.pyplot(fig)
+                plt.close(fig)
 
     with st.expander('Export Model Card', expanded=False):
         if not MODEL_CARD_AVAILABLE:
@@ -797,19 +891,19 @@ def render_custom_dashboard():
                 '- **Numeric columns** are used as features directly.\n'
                 '- **Categorical / text columns** are one-hot encoded automatically.\n'
                 '- **Target column** can be any categorical or integer column.\n'
-                '- Rows with missing values are dropped.'
+                '- Missing values are reported before incomplete selected rows are excluded.'
             )
         return
 
-    df_raw = pd.read_csv(uploaded).dropna()
+    df_uploaded = pd.read_csv(uploaded)
     dataset_widget_key = hashlib.sha256(uploaded.getvalue()).hexdigest()[:12]
-    st.success(f'Loaded {len(df_raw):,} rows x {df_raw.shape[1]} columns')
+    st.success(f'Loaded {len(df_uploaded):,} rows x {df_uploaded.shape[1]} columns')
 
     with st.expander('Preview data', expanded=False):
-        st.dataframe(df_raw.head(20), width='stretch')
+        st.dataframe(df_uploaded.head(20), width='stretch')
 
-    all_cols = list(df_raw.columns)
-    target_recommendations = recommend_classification_targets(df_raw)
+    all_cols = list(df_uploaded.columns)
+    target_recommendations = recommend_classification_targets(df_uploaded)
     default_target = target_recommendations[0] if target_recommendations else all_cols[-1]
 
     st.subheader('Column configuration')
@@ -826,7 +920,7 @@ def render_custom_dashboard():
     remaining = [c for c in all_cols if c != target_col]
     numeric_cols = [
         c for c in remaining
-        if pd.api.types.is_numeric_dtype(df_raw[c])
+        if pd.api.types.is_numeric_dtype(df_uploaded[c])
     ]
 
     with col2:
@@ -839,6 +933,28 @@ def render_custom_dashboard():
 
     if not feature_cols:
         st.warning('Select at least one feature column.')
+        return
+
+    if DATA_VALIDATION_AVAILABLE:
+        schema_report = run_all_schema_checks(df_uploaded, target_col)
+        if not display_validation_report(
+            schema_report,
+            heading='Pre-training Data Validation',
+        ):
+            st.info('Resolve the blocking schema issues before model training can begin.')
+            return
+
+    selected_columns = list(dict.fromkeys([*feature_cols, target_col]))
+    df_raw = df_uploaded.dropna(subset=selected_columns).copy()
+    excluded_rows = len(df_uploaded) - len(df_raw)
+    if excluded_rows:
+        st.info(
+            f'Excluded {excluded_rows:,} row'
+            f'{"s" if excluded_rows != 1 else ""} with missing values in the selected '
+            f'target or features; {len(df_raw):,} complete rows remain.'
+        )
+    if df_raw.empty:
+        st.error('No complete rows remain for the selected target and features.')
         return
 
     target_validation = validate_classification_target(df_raw[target_col])
@@ -896,13 +1012,23 @@ def render_custom_dashboard():
     def _fit(key, _X_tr, _y_tr, _n_classes):
         mdls = build_sklearn_models(_n_classes)
 
-        for m in mdls.values():
-            m.fit(_X_tr, _y_tr)
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', ConvergenceWarning)
+            for m in mdls.values():
+                m.fit(_X_tr, _y_tr)
 
         return mdls
 
     with st.spinner('Training models...'):
         fitted_models = _fit(cache_key, X_tr, y_tr, n_classes)
+
+    if DATA_VALIDATION_AVAILABLE:
+        leakage_report = run_all_leakage_checks(
+            df_raw[[*feature_cols, target_col]],
+            target_col,
+            'classification',
+        )
+        display_validation_report(leakage_report, errors_are_blocking=False)
 
     tabs = st.tabs([
         'Model Comparison',
@@ -921,7 +1047,11 @@ def render_custom_dashboard():
         results = {}
 
         for name, m in fitted_models.items():
-            scores = cross_val_score(m, X_tr, y_tr, cv=skf, scoring='accuracy')
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', ConvergenceWarning)
+                scores = cross_val_score(
+                    m, X_tr, y_tr, cv=skf, scoring='accuracy'
+                )
             results[name] = {
                 'cv_mean': scores.mean(),
                 'cv_std': scores.std(),
@@ -1017,31 +1147,39 @@ def render_custom_dashboard():
             'The model is still trained on the full feature set.'
         )
 
-        sc_full = StandardScaler().fit(X_tr)
-        pca = PCA(n_components=2, random_state=42).fit(sc_full.transform(X_tr))
-        X_tr_2d = pca.transform(sc_full.transform(X_tr))
-        sc_2d = StandardScaler().fit(X_tr_2d)
-        X_tr_2d_sc = sc_2d.transform(X_tr_2d)
+        if X_tr.shape[1] < 2:
+            st.info(
+                'A 2-D PCA decision boundary requires at least two encoded feature '
+                'dimensions. Select another feature to enable this visualization.'
+            )
+        else:
+            sc_full = StandardScaler().fit(X_tr)
+            pca = PCA(n_components=2, random_state=42).fit(sc_full.transform(X_tr))
+            X_tr_2d = pca.transform(sc_full.transform(X_tr))
+            sc_2d = StandardScaler().fit(X_tr_2d)
+            X_tr_2d_sc = sc_2d.transform(X_tr_2d)
 
-        # These models are only for the 2-D boundary picture.
-        @st.cache_resource
-        def _fit_2d(key, _X2, _y):
-            m2d = build_sklearn_models(n_classes)
+            # These models are only for the 2-D boundary picture.
+            @st.cache_resource
+            def _fit_2d(key, _X2, _y):
+                m2d = build_sklearn_models(n_classes)
 
-            for m in m2d.values():
-                m.fit(_X2, _y)
+                with warnings.catch_warnings():
+                    warnings.simplefilter('ignore', ConvergenceWarning)
+                    for m in m2d.values():
+                        m.fit(_X2, _y)
 
-            return m2d
+                return m2d
 
-        models_2d = _fit_2d(cache_key + '_2d', X_tr_2d_sc, y_tr)
-        cols = st.columns(len(models_2d))
+            models_2d = _fit_2d(cache_key + '_2d', X_tr_2d_sc, y_tr)
+            cols = st.columns(len(models_2d))
 
-        for col, (name, m) in zip(cols, models_2d.items()):
-            fig = fig_decision_boundary_2d(m, X_tr_2d_sc, y_tr, classes, sc_2d, name)
-            col.pyplot(fig)
-            plt.close(fig)
+            for col, (name, m) in zip(cols, models_2d.items()):
+                fig = fig_decision_boundary_2d(m, X_tr_2d_sc, y_tr, classes, sc_2d, name)
+                col.pyplot(fig)
+                plt.close(fig)
 
-        st.info(f'PCA explains {pca.explained_variance_ratio_.sum() * 100:.1f} % of variance.')
+            st.info(f'PCA explains {pca.explained_variance_ratio_.sum() * 100:.1f} % of variance.')
 
     with tabs[5]:
         st.subheader('Learning Curves')
@@ -1066,7 +1204,15 @@ def render_custom_dashboard():
                 if pd.api.types.is_numeric_dtype(df_raw[c]):
                     mn, mx = float(df_raw[c].min()), float(df_raw[c].max())
                     med = float(df_raw[c].median())
-                    input_vals[c] = st.slider(c, mn, mx, med)
+                    if np.isclose(mn, mx):
+                        input_vals[c] = st.number_input(
+                            c,
+                            value=med,
+                            disabled=True,
+                            help='This feature is constant in the uploaded dataset.',
+                        )
+                    else:
+                        input_vals[c] = st.slider(c, mn, mx, med)
                 else:
                     opts = sorted(df_raw[c].unique().tolist())
                     input_vals[c] = st.selectbox(c, opts)

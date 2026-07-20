@@ -55,6 +55,7 @@ The research part answers a specific question I had: is the accuracy ceiling cau
 - Serve predictions through a FastAPI endpoint.
 - Explore results through a Streamlit dashboard.
 - Upload custom CSV files and run a lightweight AutoML workflow.
+- Validate uploaded CSVs automatically for blocking schema problems and feature-leakage risks, with reusable reference-data distribution-drift checks.
 - Generate dataset reports and grounded natural-language explanations.
 - Export model cards with dataset details, feature analysis, model diagnostics and selected grounded explanations in Markdown, with optional PDF output when the PDF dependencies are installed.
 - Ask multi-turn dataset questions with chat history, suggested follow-ups and JSON export.
@@ -799,5 +800,4 @@ The AI Dataset Assistant extends the project beyond this one dataset by making t
 
 Planned future improvements:
 
-- `data-validation-suite`: add stronger schema checks, drift checks and feature-leakage warnings for uploaded CSV files.
 - `explainability`: integrate SHAP values and LIME explanations into the dashboard and API prediction responses so users can understand why a building received a particular energy-consumption classification.
