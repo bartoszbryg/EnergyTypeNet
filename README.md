@@ -28,9 +28,13 @@ The research part answers a specific question I had: is the accuracy ceiling cau
 | --- | --- |
 | ![Custom CSV configuration and multiclass ROC analysis](screenshots/05_custom_dataset_analysis.png) | ![Grounded multi-turn AI dataset assistant conversation](screenshots/06_chat_assistant.png) |
 
-| Live Prediction |
-| --- |
-| ![Interactive live building-type predictions and probabilities](screenshots/07_live_prediction.png) |
+| Live Prediction | Live Prediction Explanation |
+| --- | --- |
+| ![Interactive live building-type predictions and probabilities](screenshots/07_live_prediction.png) | ![Local SHAP and LIME explanation for a live EnergyTypeNet prediction](screenshots/08_live_prediction_explanation.png) |
+
+| Global Explanations | Custom Dataset Explanation |
+| --- | --- |
+| ![Global SHAP feature importance with per-class results](screenshots/09_explanations.png) | ![Custom dataset SHAP and LIME local explanation](screenshots/10_custom_explanations.png) |
 
 *These screenshots show the deployed Streamlit app. See [`screenshots/README.md`](screenshots/README.md) for the recapture checklist.*
 
