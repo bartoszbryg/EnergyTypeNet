@@ -4,7 +4,7 @@
 [![Live App](https://img.shields.io/badge/Live%20App-Streamlit-FF4B4B?logo=streamlit)](https://energytypenet-ml.streamlit.app/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> [Open Live Demo](https://energytypenet-ml.streamlit.app/) — Upload a supported tabular classification CSV for model comparison and visual diagnostics, use the broader AI Dataset Assistant for classification or regression analysis, or explore the bundled EnergyTypeNet demo with interactive decision boundaries, ROC curves and grounded dataset Q&A.
+> [Open Live Demo](https://energytypenet-ml.streamlit.app/) — Upload a supported tabular classification CSV for model comparison and visual diagnostics, explore global and local SHAP explanations with LIME comparisons, use the broader AI Dataset Assistant for classification or regression analysis, or explore the bundled EnergyTypeNet demo with interactive decision boundaries, ROC curves and grounded dataset Q&A.
 
 I built EnergyTypeNet to predict whether a building is Residential, Commercial or Industrial from energy-consumption and building-attribute data. The core idea was to go beyond simply applying sklearn models and implement several algorithms from scratch so I could understand what is happening inside the learning process. I originally built three custom NumPy classifiers: an attention-weighted nearest-neighbor classifier using exponential kernel weighting, a One-vs-Rest logistic regression trained with gradient descent and L2 regularization, and a multiclass Softmax regression with a joint weight matrix and categorical cross-entropy loss. I later extended this into a broader advanced model suite with custom decision trees, SVM, Naive Bayes variants, Bayesian linear regression, regularized regression, dimensionality reduction, unsupervised clustering, custom Bagging and AdaBoost ensembles, a custom multi-layer perceptron trained with backpropagation and a PyTorch tabular deep-learning workflow. The project now covers Ridge, Lasso, ElasticNet, regularized logistic regression, PCA, LDA, Kernel PCA, t-SNE, optional UMAP, K-Means, DBSCAN, Gaussian Mixture Models, agglomerative hierarchical clustering, ensemble diversity diagnostics, Bagging, AdaBoost, Extra Trees, histogram gradient boosting, neural-network activation functions, initialization, optimizers, dropout, early stopping, MLP classification/regression, PyTorch `nn.Module` training loops, autoencoder-based reconstruction/anomaly detection, convolutional neural-network foundations on image data and recurrent neural-network foundations for sequential data.
 
@@ -53,6 +53,7 @@ The research part answers a specific question I had: is the accuracy ceiling cau
 - Study recurrent neural networks with NumPy RNN cells, PyTorch RNN/LSTM/GRU models, sequence generation and sequence classification.
 - Train and serialize the best model with `joblib`.
 - Serve predictions through a FastAPI endpoint.
+- Explain predictions with global and per-class SHAP importance, local SHAP contributions, optional LIME comparisons and explanation-aware API responses.
 - Explore results through a Streamlit dashboard.
 - Upload custom CSV files and run a lightweight AutoML workflow.
 - Validate uploaded CSVs automatically for blocking schema problems and feature-leakage risks, with reusable reference-data distribution-drift checks.
@@ -699,7 +700,7 @@ To deploy a personal fork:
 
 Deployment typically completes in about two minutes.
 
-The deployed app supports the core dashboard features. Local Ollama streaming is unavailable because Ollama requires an instance running locally on port `11434`; OpenAI and Anthropic work in the cloud when their API keys are added through Streamlit Secrets. PDF model-card downloads require the optional PDF dependencies above and remain disabled when those packages are not installed.
+The deployed app supports the core dashboard features, including global and local SHAP explanations and LIME comparisons. The official deployment installs SHAP and LIME through `requirements.txt`, while the application still degrades safely when either package is unavailable in another environment. Local Ollama streaming is unavailable because Ollama requires an instance running locally on port `11434`; OpenAI and Anthropic work in the cloud when their API keys are added through Streamlit Secrets. PDF model-card downloads require the optional PDF dependencies above and remain disabled when those packages are not installed.
 
 ### Streamlit Dashboard
 
@@ -721,6 +722,15 @@ The API can be containerized with Docker:
 ```bash
 docker build -t energytypenet .
 docker run -p 8000:8000 energytypenet
+```
+
+The service exposes `GET /health`, `POST /predict`, `POST /predict/explain` and `GET /explain/global`. Explained predictions always return the model prediction even when an optional explanation library is unavailable. Global SHAP results are cached, and health responses report whether SHAP and LIME are installed. The Streamlit dashboard also provides global feature importance, per-class SHAP views, local waterfall explanations and optional SHAP/LIME comparisons.
+
+Install the optional explanation libraries only when needed:
+
+```bash
+python -m pip install shap
+python -m pip install lime
 ```
 
 See `docs/DEPLOYMENT.md` for deployment notes.
@@ -796,8 +806,6 @@ The AI Dataset Assistant extends the project beyond this one dataset by making t
 
 ---
 
-## Suggested Next Branches
+## Conclusion
 
-Planned future improvements:
-
-- `explainability`: integrate SHAP values and LIME explanations into the dashboard and API prediction responses so users can understand why a building received a particular energy-consumption classification.
+EnergyTypeNet is a complete, reusable tabular machine-learning project: it combines educational implementations with tested model training, validation, explainability, deployment, interactive analysis and export workflows. Its safeguards and diagnostics are designed to keep results useful without hiding data limitations, leakage risks or optional dependencies. The project is ready to use as a learning resource, an extensible experimentation platform and a practical starting point for responsible tabular ML applications.
