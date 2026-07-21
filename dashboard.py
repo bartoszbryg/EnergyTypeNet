@@ -112,6 +112,37 @@ except ImportError:
     select_notable_exchanges = None
     MODEL_CARD_AVAILABLE = False
 
+try:
+    from src.explainability import (
+        ExplanationResult,
+        build_shap_explainer,
+        compare_shap_lime,
+        explain_dataset_globally,
+        explain_single_prediction,
+    )
+    EXPLAINABILITY_AVAILABLE = True
+except ImportError:
+    ExplanationResult = None
+    build_shap_explainer = None
+    compare_shap_lime = None
+    explain_dataset_globally = None
+    explain_single_prediction = None
+    EXPLAINABILITY_AVAILABLE = False
+
+try:
+    import shap as shap_library
+    SHAP_AVAILABLE = True
+except ImportError:
+    shap_library = None
+    SHAP_AVAILABLE = False
+
+try:
+    from lime import lime_tabular as lime_tabular_library
+    LIME_AVAILABLE = True
+except ImportError:
+    lime_tabular_library = None
+    LIME_AVAILABLE = False
+
 st.set_page_config(
     page_title='EnergyTypeNet',
     page_icon='building',
@@ -134,9 +165,222 @@ if 'llm_api_key' not in st.session_state:
     st.session_state.llm_api_key = None
 if 'usage_tracker' not in st.session_state:
     st.session_state.usage_tracker = UsageTracker()
+if 'shap_explainer_cache' not in st.session_state:
+    st.session_state.shap_explainer_cache = {}
+if 'global_explanation_cache' not in st.session_state:
+    st.session_state.global_explanation_cache = {}
+if 'explanation_history' not in st.session_state:
+    st.session_state.explanation_history = []
+if 'custom_explanation_history' not in st.session_state:
+    st.session_state.custom_explanation_history = []
 
 
 # Shared helpers
+
+def render_explanation_unavailable(*, require_shap=False, require_lime=False):
+    """Explain which optional dependency is needed and return availability."""
+
+    if not EXPLAINABILITY_AVAILABLE:
+        st.info(
+            'Explainability is unavailable because src/explainability.py could not be '
+            'imported. Reinstall the project dependencies and restart the app.'
+        )
+        return False
+    missing = []
+    if require_shap and not SHAP_AVAILABLE:
+        missing.append('SHAP (`pip install shap`)')
+    if require_lime and not LIME_AVAILABLE:
+        missing.append('LIME (`pip install lime`)')
+    if missing:
+        st.info('Install ' + ' and '.join(missing) + ' to enable this explanation.')
+        return False
+    return True
+
+
+def _clear_explanation_state(prefix):
+    """Drop cached explainers/results belonging to a changed dataset or model set."""
+
+    for name in ('shap_explainer_cache', 'global_explanation_cache'):
+        cache = st.session_state.get(name, {})
+        st.session_state[name] = {
+            key: value for key, value in cache.items() if not str(key).startswith(prefix)
+        }
+    if prefix == 'custom:':
+        st.session_state.custom_explanation_history = []
+
+
+def _cached_shap_explainer(cache_key, model, background, feature_names):
+    if not SHAP_AVAILABLE or not EXPLAINABILITY_AVAILABLE:
+        return None
+    cache = st.session_state.shap_explainer_cache
+    if cache_key not in cache:
+        cache[cache_key] = build_shap_explainer(model, background, feature_names)
+    return cache[cache_key]
+
+
+def render_shap_waterfall(result):
+    """Render native SHAP output when possible, with a deterministic fallback."""
+
+    if not result.shap_values:
+        st.info('No SHAP explanation is available for this prediction.')
+        return
+    values = np.asarray(result.shap_values, dtype=float)
+    names = np.asarray(result.feature_names, dtype=object)
+    feature_values = np.asarray(result.feature_values, dtype=object)
+    base = float(result.shap_base_value or 0.0)
+
+    if SHAP_AVAILABLE:
+        try:
+            explanation = shap_library.Explanation(
+                values=values,
+                base_values=base,
+                data=feature_values,
+                feature_names=list(names),
+            )
+            shap_library.plots.waterfall(
+                explanation, max_display=min(15, len(values)), show=False
+            )
+            st.pyplot(plt.gcf(), clear_figure=True)
+            return
+        except Exception:
+            plt.close('all')
+
+    order = np.argsort(np.abs(values))[::-1][:15]
+    ordered_values = values[order]
+    ordered_names = names[order]
+    running = base
+    fig, ax = plt.subplots(figsize=(9, max(3.5, 0.42 * len(order))))
+    for position, (name, contribution) in enumerate(
+        zip(ordered_names, ordered_values)
+    ):
+        next_value = running + contribution
+        ax.barh(
+            position,
+            abs(contribution),
+            left=min(running, next_value),
+            color='#2ca02c' if contribution >= 0 else '#d62728',
+            alpha=0.85,
+        )
+        running = next_value
+    ax.axvline(base, color='#555', linestyle='--', label=f'base = {base:.3f}')
+    ax.axvline(running, color='#111', linestyle=':', label=f'output = {running:.3f}')
+    ax.set_yticks(range(len(order)), ordered_names)
+    ax.invert_yaxis()
+    ax.set_xlabel('Model output')
+    ax.set_title('SHAP contribution waterfall')
+    ax.legend(loc='best')
+    fig.tight_layout()
+    st.pyplot(fig)
+    plt.close(fig)
+
+
+def render_lime_bar_chart(result):
+    if not result.lime_weights:
+        st.info('No LIME explanation is available for this prediction.')
+        return
+    values = np.asarray(result.lime_weights, dtype=float)
+    names = np.asarray(result.feature_names, dtype=object)
+    order = np.argsort(np.abs(values))[-15:]
+    fig, ax = plt.subplots(figsize=(8, max(3.5, 0.4 * len(order))))
+    ax.barh(
+        names[order], values[order],
+        color=np.where(values[order] >= 0, '#2ca02c', '#d62728'),
+    )
+    ax.axvline(0, color='#555', linewidth=1)
+    ax.set_xlabel('Local LIME weight')
+    ax.set_title('LIME local feature contributions')
+    fig.tight_layout()
+    st.pyplot(fig)
+    plt.close(fig)
+
+
+def render_local_explanation(result):
+    st.markdown(f'**{result.summary_text()}**')
+    details = []
+    if result.predicted_class is not None:
+        details.append(f'prediction: `{result.predicted_class}`')
+    if result.predicted_probability is not None:
+        details.append(f'probability: `{result.predicted_probability:.3f}`')
+    if result.shap_explainer_type:
+        details.append(f'SHAP explainer: `{result.shap_explainer_type}`')
+    if result.lime_local_r2 is not None:
+        details.append(f'LIME local R²: `{result.lime_local_r2:.3f}`')
+    if details:
+        st.caption(' · '.join(details))
+
+    shap_column, lime_column = st.columns(2)
+    with shap_column:
+        st.markdown('#### SHAP')
+        render_shap_waterfall(result)
+    with lime_column:
+        st.markdown('#### LIME')
+        render_lime_bar_chart(result)
+
+    if result.shap_values is not None and result.lime_weights is not None:
+        with st.expander('Compare SHAP and LIME', expanded=False):
+            comparison = compare_shap_lime(result)
+            st.dataframe(comparison, width="stretch", hide_index=True)
+            agreement = comparison['sign_agreement'].dropna()
+            if len(agreement):
+                st.caption(f'Sign agreement: {agreement.mean():.1%}')
+
+
+def render_global_explanation(global_importance, model=None):
+    st.dataframe(global_importance, width="stretch", hide_index=True)
+    ordered = global_importance.sort_values('mean_abs_shap')
+    fig, ax = plt.subplots(figsize=(8, max(3.5, 0.4 * len(ordered))))
+    ax.barh(ordered['feature'], ordered['mean_abs_shap'], color='#1f77b4')
+    ax.set_xlabel('Mean absolute SHAP value')
+    ax.set_title('Global SHAP feature importance')
+    fig.tight_layout()
+    st.pyplot(fig)
+    plt.close(fig)
+
+    class_columns = [
+        column for column in global_importance.columns
+        if column.startswith('mean_abs_shap_')
+    ]
+    if class_columns:
+        with st.expander('Per-class SHAP importance', expanded=False):
+            st.dataframe(
+                global_importance[['feature', *class_columns]],
+                width="stretch",
+                hide_index=True,
+            )
+
+    estimator = model.steps[-1][1] if hasattr(model, 'steps') else model
+    standard = None
+    if hasattr(estimator, 'feature_importances_'):
+        standard = np.asarray(estimator.feature_importances_, dtype=float)
+    elif hasattr(estimator, 'coef_'):
+        coefficients = np.asarray(estimator.coef_, dtype=float)
+        standard = np.mean(np.abs(coefficients), axis=0) if coefficients.ndim > 1 else np.abs(coefficients)
+    if standard is not None and len(standard) == len(global_importance):
+        comparison = global_importance[['feature', 'mean_abs_shap']].copy()
+        comparison['standard_importance'] = standard
+        st.markdown('#### SHAP vs model-native importance')
+        st.dataframe(comparison, width="stretch", hide_index=True)
+
+
+def _run_local_explanation(
+    *, cache_key, model, sample, background, feature_names, class_names,
+    sample_index=None,
+):
+    explainer = _cached_shap_explainer(
+        cache_key, model, background, feature_names
+    ) if SHAP_AVAILABLE else None
+    return explain_single_prediction(
+        model=model,
+        sample=sample,
+        feature_names=feature_names,
+        class_names=class_names,
+        background_data=background,
+        task_type='classification',
+        sample_index=sample_index,
+        use_shap=SHAP_AVAILABLE,
+        use_lime=LIME_AVAILABLE,
+        shap_explainer=explainer,
+    )
 
 def display_validation_report(
     report,
@@ -611,6 +855,12 @@ def _load_energy_resources(_sc):
         return fallback, str(exc)
 
 
+def _energy_explanation_model(model, is_scaled, scaler):
+    """Expose scaled demo models through a raw-feature pipeline."""
+
+    return make_pipeline(scaler, model) if is_scaled else model
+
+
 def render_energy_dashboard(page: str):
     train_df, test_df, X_tr, y_tr, X_te, y_te, sc = _load_energy()
 
@@ -793,6 +1043,54 @@ def render_energy_dashboard(page: str):
             plt.close(fig)
             idx += 1
 
+    elif page == 'Explanations':
+        st.title('Global Model Explanations')
+        st.caption(
+            'SHAP estimates how each input feature influences model output across '
+            'the bundled EnergyTypeNet dataset.'
+        )
+        if render_explanation_unavailable(require_shap=True):
+            accuracy = {
+                name: accuracy_score(y_te, model.predict(X_te_sc if scaled else X_te))
+                for name, (model, _, scaled) in models.items()
+            }
+            default_name = max(accuracy, key=accuracy.get)
+            names = list(models)
+            selected_name = st.selectbox(
+                'Model to explain', names, index=names.index(default_name),
+                key='energy_global_explanation_model',
+            )
+            selected_model, _, selected_scaled = models[selected_name]
+            explanation_model = _energy_explanation_model(
+                selected_model, selected_scaled, sc
+            )
+            cache_key = f'energy:global:{selected_name}'
+            if st.button('Compute global SHAP explanations', type='primary'):
+                with st.spinner('Computing bounded global SHAP explanations...'):
+                    try:
+                        explainer = _cached_shap_explainer(
+                            cache_key,
+                            explanation_model,
+                            X_tr,
+                            ['Energy Consumption', 'Square Footage'],
+                        )
+                        st.session_state.global_explanation_cache[cache_key] = (
+                            explain_dataset_globally(
+                                explanation_model,
+                                X_tr,
+                                ['Energy Consumption', 'Square Footage'],
+                                ENERGY_CLASSES,
+                                shap_explainer=explainer,
+                            )
+                        )
+                    except Exception as exc:
+                        st.warning(f'Global explanation could not be computed: {exc}')
+            global_result = st.session_state.global_explanation_cache.get(cache_key)
+            if global_result is not None:
+                render_global_explanation(global_result, explanation_model)
+            else:
+                st.info('Choose a model and compute its global explanation.')
+
     elif page == 'Live Prediction':
         st.title('Live Prediction')
 
@@ -836,6 +1134,55 @@ def render_energy_dashboard(page: str):
                 plt.tight_layout()
                 col.pyplot(fig)
                 plt.close(fig)
+
+            st.divider()
+            st.subheader('Explain this prediction')
+            if render_explanation_unavailable():
+                explain_name = st.selectbox(
+                    'Model explanation', list(models), key='energy_local_model'
+                )
+                explain_model, _, explain_scaled = models[explain_name]
+                raw_model = _energy_explanation_model(explain_model, explain_scaled, sc)
+                if not SHAP_AVAILABLE and not LIME_AVAILABLE:
+                    render_explanation_unavailable(require_shap=True)
+                elif st.button('Explain prediction', type='primary'):
+                    with st.spinner('Computing local SHAP and LIME explanations...'):
+                        try:
+                            result = _run_local_explanation(
+                                cache_key=f'energy:local:{explain_name}',
+                                model=raw_model,
+                                sample=row_raw,
+                                background=X_tr,
+                                feature_names=['Energy Consumption', 'Square Footage'],
+                                class_names=ENERGY_CLASSES,
+                            )
+                            st.session_state.energy_current_explanation = result
+                            st.session_state.explanation_history.append(
+                                {'model': explain_name, 'result': result}
+                            )
+                            st.session_state.explanation_history = (
+                                st.session_state.explanation_history[-10:]
+                            )
+                        except Exception as exc:
+                            st.warning(f'Prediction explanation failed safely: {exc}')
+                current = st.session_state.get('energy_current_explanation')
+                if current is not None:
+                    render_local_explanation(current)
+                if st.session_state.explanation_history:
+                    with st.expander('Explanation history', expanded=False):
+                        labels = [
+                            f"{item['model']} · {item['result'].timestamp}"
+                            for item in reversed(st.session_state.explanation_history)
+                        ]
+                        history_label = st.selectbox(
+                            'Previous explanation', labels, key='energy_explanation_history'
+                        )
+                        history_index = labels.index(history_label)
+                        render_local_explanation(
+                            list(reversed(st.session_state.explanation_history))[
+                                history_index
+                            ]['result']
+                        )
 
     with st.expander('Export Model Card', expanded=False):
         if not MODEL_CARD_AVAILABLE:
@@ -1007,6 +1354,15 @@ def render_custom_dashboard():
     )
 
     cache_key = f'{uploaded.name}_{target_col}_{"_".join(feature_cols)}'
+    explanation_signature = (
+        f'{dataset_widget_key}:{target_col}:'
+        f'{hashlib.sha256(str(feature_cols).encode()).hexdigest()[:12]}'
+    )
+    if st.session_state.get('custom_explanation_signature') != explanation_signature:
+        _clear_explanation_state('custom:')
+        st.session_state.custom_current_explanation = None
+        st.session_state.custom_live_explanation = None
+        st.session_state.custom_explanation_signature = explanation_signature
 
     @st.cache_resource
     def _fit(key, _X_tr, _y_tr, _n_classes):
@@ -1275,6 +1631,135 @@ def render_custom_dashboard():
             file_name='prediction.json',
             mime='application/json',
         )
+
+        st.markdown('#### Explain this prediction')
+        if render_explanation_unavailable(require_shap=True, require_lime=True):
+            live_explanation_model = st.selectbox(
+                'Explanation model',
+                list(fitted_models),
+                key=f'custom_live_explanation_model_{explanation_signature}',
+            )
+            if st.button(
+                'Generate local SHAP + LIME explanation',
+                key=f'custom_live_explanation_button_{explanation_signature}',
+            ):
+                with st.spinner('Explaining this prediction...'):
+                    explanation = _run_local_explanation(
+                        cache_key=(
+                            f'custom:live:{explanation_signature}:'
+                            f'{live_explanation_model}'
+                        ),
+                        model=fitted_models[live_explanation_model],
+                        sample=row_input,
+                        background=X_tr,
+                        feature_names=feat_names,
+                        class_names=classes,
+                    )
+                st.session_state.custom_live_explanation = explanation
+                history = st.session_state.custom_explanation_history
+                history.append((live_explanation_model, explanation))
+                st.session_state.custom_explanation_history = history[-10:]
+
+            live_explanation = st.session_state.get('custom_live_explanation')
+            if live_explanation is not None:
+                if (
+                    live_explanation.shap_explainer_type
+                    and 'kernel' in str(live_explanation.shap_explainer_type).lower()
+                ):
+                    st.warning(
+                        'This model uses Kernel SHAP, so explanation generation can '
+                        'take longer than prediction.'
+                    )
+                render_local_explanation(live_explanation)
+
+    with st.expander('Model Explanations', expanded=False):
+        if render_explanation_unavailable(require_shap=True, require_lime=True):
+            explanation_model_name = st.selectbox(
+                'Model to explain',
+                list(fitted_models),
+                index=list(fitted_models).index(res_df.iloc[0]['Model']),
+                key=f'custom_explanation_model_{explanation_signature}',
+            )
+            explanation_model = fitted_models[explanation_model_name]
+            global_tab, local_tab = st.tabs(['Global SHAP', 'Test-row explanation'])
+
+            with global_tab:
+                global_key = (
+                    f'custom:global:{explanation_signature}:{explanation_model_name}'
+                )
+                if st.button(
+                    'Generate global SHAP explanation',
+                    key=f'custom_global_button_{explanation_signature}',
+                ):
+                    with st.spinner('Computing global SHAP importance...'):
+                        try:
+                            explainer = _cached_shap_explainer(
+                                global_key, explanation_model, X_tr, feat_names
+                            )
+                            st.session_state.global_explanation_cache[global_key] = (
+                                explain_dataset_globally(
+                                    explanation_model,
+                                    X_te,
+                                    feat_names,
+                                    class_names=classes,
+                                    shap_explainer=explainer,
+                                )
+                            )
+                        except Exception as exc:
+                            st.warning(
+                                f'Global explanation could not be computed: {exc}'
+                            )
+                global_result = st.session_state.global_explanation_cache.get(global_key)
+                if global_result is not None:
+                    render_global_explanation(global_result, explanation_model)
+
+            with local_tab:
+                sample_index = st.selectbox(
+                    'Test-row index',
+                    range(len(X_te)),
+                    key=f'custom_test_row_{explanation_signature}',
+                )
+                if st.button(
+                    'Explain selected test row',
+                    key=f'custom_local_button_{explanation_signature}',
+                ):
+                    with st.spinner('Computing SHAP and LIME explanations...'):
+                        st.session_state.custom_current_explanation = (
+                            _run_local_explanation(
+                                cache_key=(
+                                    f'custom:local:{explanation_signature}:'
+                                    f'{explanation_model_name}'
+                                ),
+                                model=explanation_model,
+                                sample=X_te[[sample_index]],
+                                background=X_tr,
+                                feature_names=feat_names,
+                                class_names=classes,
+                                sample_index=int(sample_index),
+                            )
+                        )
+                current = st.session_state.get('custom_current_explanation')
+                if current is not None:
+                    if (
+                        current.shap_explainer_type
+                        and 'kernel' in str(current.shap_explainer_type).lower()
+                    ):
+                        st.warning(
+                            'This model uses Kernel SHAP, which may take longer than '
+                            'tree or linear explainers.'
+                        )
+                    render_local_explanation(current)
+
+            history = st.session_state.custom_explanation_history
+            if history:
+                with st.expander('Recent local explanations', expanded=False):
+                    for position, (model_name, explanation) in enumerate(
+                        reversed(history), start=1
+                    ):
+                        st.markdown(
+                            f'**{position}. {model_name}:** '
+                            f'{explanation.summary_text()}'
+                        )
 
     with st.expander('Export Model Card', expanded=False):
         if not MODEL_CARD_AVAILABLE:
@@ -2154,7 +2639,7 @@ if mode == 'EnergyTypeNet (pre-loaded)':
         'Navigate',
         ['Overview', 'EDA', 'Model Comparison', 'Decision Boundaries',
          'Confusion Matrices', 'ROC / AUC', 'Precision-Recall',
-         'Learning Curves', 'Live Prediction'],
+         'Learning Curves', 'Explanations', 'Live Prediction'],
     )
     render_energy_dashboard(page)
 else:

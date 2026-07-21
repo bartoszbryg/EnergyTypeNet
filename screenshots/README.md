@@ -1,16 +1,19 @@
 # Streamlit App Screenshots
 
-This directory provides visual documentation of the deployed Streamlit app for the main project README and gives maintainers a consistent plan for recapturing images after significant interface changes.
+This directory provides visual documentation of the deployed Streamlit app and gives maintainers a consistent plan for recapturing images after significant interface changes.
 
 | PNG filename | App page or section | Required visible content |
 | --- | --- | --- |
-| `01_overview.png` | EnergyTypeNet — Overview | The expanded sidebar with building-feature sliders, all four top accuracy metric cards, and the test-accuracy bar chart in a full-width browser window. |
+| `01_overview.png` | EnergyTypeNet — Overview | The expanded sidebar, all four top metric cards, the test-accuracy chart and model table in a full-width browser window. |
 | `02_model_comparison.png` | EnergyTypeNet — Model Comparison | The complete 5-fold cross-validation table with CV mean, CV standard deviation and test accuracy for every model. |
 | `03_decision_boundaries.png` | EnergyTypeNet — Decision Boundaries | The multi-panel PCA decision-boundary visualization, with PC1/PC2 axes, colored building-type regions and observed points overlaid. |
 | `04_roc_curves.png` | EnergyTypeNet — ROC / AUC | ROC curves for all three building-type classes across the models, including clearly visible AUC annotations and legends. |
-| `05_custom_dataset_analysis.png` | Custom Dataset after uploading a CSV | Use a clean non-sensitive classification CSV and show the dataset summary, selected target/features and one useful diagnostic view such as multiclass ROC curves. |
-| `06_chat_assistant.png` | Custom Dataset — Dataset Assistant | At least three visible exchanges covering model performance and a follow-up question, the assistant responses, and suggested follow-up question chips. |
-| `07_live_prediction.png` | EnergyTypeNet — Live Prediction | Informative sidebar slider values and the main prediction cards showing model outputs and probabilities for every building type. |
+| `05_custom_dataset_analysis.png` | Custom Dataset after uploading a CSV | A clean non-sensitive classification CSV with the dataset summary, selected target/features and a useful diagnostic such as multiclass ROC curves. |
+| `06_chat_assistant.png` | AI Dataset Assistant — Dataset Assistant | At least three visible exchanges covering model performance and a follow-up question, assistant responses, and suggested follow-up question chips. |
+| `07_live_prediction.png` | EnergyTypeNet — Live Prediction | Informative sidebar slider values and the prediction cards showing model outputs and probabilities. |
+| `08_live_prediction_explanation.png` | EnergyTypeNet — Live Prediction | A local prediction explanation with the selected model, SHAP waterfall, LIME contribution chart and expanded agreement table. |
+| `09_explanations.png` | EnergyTypeNet — Explanations | The dedicated global SHAP page with model selector, per-class importance table and global feature-importance chart. |
+| `10_custom_explanations.png` | Custom Dataset — Model Explanations | A test-row explanation showing Kernel SHAP, LIME contributions and an expanded SHAP/LIME comparison with meaningful feature names. |
 
 ## How to Capture Screenshots
 
@@ -24,4 +27,4 @@ This directory provides visual documentation of the deployed Streamlit app for t
 
 ## When to Update Screenshots
 
-Recapture the screenshots whenever the dashboard layout changes significantly, new models are added to the comparison page, or the chat assistant interface is updated.
+Recapture the screenshots whenever the dashboard layout changes significantly, new models or explanation views are added, or the chat assistant interface is updated.
