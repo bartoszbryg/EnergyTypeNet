@@ -19,7 +19,10 @@ def test_health_endpoint():
     response = client.get('/health')
 
     assert response.status_code == 200
-    assert response.json() == {'status': 'ok'}
+    result = response.json()
+    assert result['status'] == 'ok'
+    assert isinstance(result['shap_available'], bool)
+    assert isinstance(result['lime_available'], bool)
 
 
 def test_predict_endpoint_returns_probabilities(monkeypatch):
